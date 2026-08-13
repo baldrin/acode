@@ -62,6 +62,14 @@ The initial task is optional; without it you are prompted. After each task
 completes, you can give a follow-up in the same conversation. `Ctrl+C`
 interrupts the current turn; `Ctrl+D` or `/quit` exits.
 
+Commands at the prompt:
+
+| Command | Effect |
+| --- | --- |
+| `/new` | clear the conversation and start fresh (the response to the context warning) |
+| `/cost` | show session token totals and the estimated cost so far |
+| `/quit` | exit (also `Ctrl+D`) |
+
 Flags:
 
 | Flag | Default | Meaning |
@@ -84,6 +92,11 @@ Flags:
   `cache read` should be nonzero from the second request of a session onward —
   that is prompt caching working (the system prompt, tool definitions, and
   earlier turns are cached and reused, cutting cost and latency).
+- Usage accumulates across the whole session: `/cost` shows the running
+  totals and an estimated dollar figure at any time, and the same summary is
+  printed when you exit. Estimates use per-token rates for known model-name
+  prefixes (including gateway-served names); an unknown model reports tokens
+  only rather than guessing.
 - The tool warns plainly when the conversation approaches the model's context
   limit instead of failing mysteriously.
 
