@@ -12,11 +12,14 @@ implementation, ``AnthropicClient``, lives at the bottom of this file.
 
 from __future__ import annotations
 
+import os
+import ssl
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Protocol
 
 import anthropic
+import httpx
 
 from .safety import ToolError
 from .tools import MUTATING_TOOLS, TOOL_DEFINITIONS, build_preview, run_tool
@@ -250,6 +253,28 @@ def _refusal_message(response: Any) -> str:
 
 # --- The real backend ------------------------------------------------------
 
+CA_BUNDLE_ENV_VARS = ("ACODE_CA_BUNDLE", "CHUNKER_CA_BUNDLE")
+
+
+def _tls_http_client() -> httpx.Client | None:
+    """TLS trust for gateway endpoints behind a private CA.
+
+    Order: an explicit CA bundle (ACODE_CA_BUNDLE, falling back to
+    CHUNKER_CA_BUNDLE so companion tools on the same endpoint can share one
+    setting), then the OS trust store via the optional ``truststore``
+    package, else None — meaning the SDK's default HTTP client is used.
+    """
+    for var in CA_BUNDLE_ENV_VARS:
+        bundle = os.environ.get(var)
+        if bundle:
+            return httpx.Client(verify=bundle)
+    try:
+        import truststore
+    except ImportError:
+        return None
+    return httpx.Client(verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT))
+
+
 class AnthropicClient:
     """Streams turns from the Claude endpoint with prompt caching.
 
@@ -262,7 +287,15 @@ class AnthropicClient:
     """
 
     def __init__(self, *, model: str, max_tokens: int, system: str) -> None:
-        self._client = anthropic.Anthropic()
+        # Endpoint routing is the SDK's own: ANTHROPIC_BASE_URL (+
+        # ANTHROPIC_AUTH_TOKEN as a Bearer token) redirects to a gateway;
+        # otherwise ANTHROPIC_API_KEY hits the default Claude endpoint.
+        http_client = _tls_http_client()
+        self._client = (
+            anthropic.Anthropic()
+            if http_client is None
+            else anthropic.Anthropic(http_client=http_client)
+        )
         # The SDK only validates credentials at request time (with a raw
         # TypeError); check up front so a missing key fails at startup.
         if (

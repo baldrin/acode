@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -12,19 +13,34 @@ from . import __version__
 from .agent import AnthropicClient, build_system_prompt, run_task
 from .display import ConsoleUI
 
-DEFAULT_MODEL = "claude-sonnet-5"
+DIRECT_DEFAULT_MODEL = "claude-sonnet-5"
+GATEWAY_DEFAULT_MODEL = "databricks-claude-sonnet-4-6"
 DEFAULT_COMMAND_TIMEOUT = 120.0
 DEFAULT_MAX_TOKENS = 32_000
+
+
+def resolve_model(flag: str | None) -> str:
+    """An explicit --model wins; otherwise the default is route-aware.
+
+    Gateway endpoints (ANTHROPIC_BASE_URL set) serve models under their own
+    names, so the direct-endpoint default would not resolve there.
+    """
+    if flag:
+        return flag
+    if os.environ.get("ANTHROPIC_BASE_URL"):
+        return GATEWAY_DEFAULT_MODEL
+    return DIRECT_DEFAULT_MODEL
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     root = Path.cwd().resolve()
+    model = resolve_model(args.model)
     ui = ConsoleUI()
 
     try:
         client = AnthropicClient(
-            model=args.model,
+            model=model,
             max_tokens=args.max_tokens,
             system=build_system_prompt(root),
         )
@@ -33,7 +49,9 @@ def main(argv: list[str] | None = None) -> int:
         ui.info("Set the ANTHROPIC_API_KEY environment variable and try again.")
         return 1
 
-    ui.info(f"acode {__version__} — {args.model} — workspace {root}")
+    ui.info(f"acode {__version__} — {model} — workspace {root}")
+    if base_url := os.environ.get("ANTHROPIC_BASE_URL"):
+        ui.info(f"endpoint: {base_url}")
     ui.info("Ctrl+C interrupts a turn; Ctrl+D or /quit exits.")
 
     messages: list[dict[str, object]] = []
@@ -45,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
         messages.append({"role": "user", "content": task})
         task = None
-        _run_one_task(client, messages, root=root, ui=ui, model=args.model, timeout=args.timeout)
+        _run_one_task(client, messages, root=root, ui=ui, model=model, timeout=args.timeout)
 
 
 def _run_one_task(
@@ -120,8 +138,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model",
-        default=DEFAULT_MODEL,
-        help=f"Anthropic model ID (default: {DEFAULT_MODEL})",
+        default=None,
+        help=(
+            f"Claude model ID (default: {DIRECT_DEFAULT_MODEL}, or "
+            f"{GATEWAY_DEFAULT_MODEL} when ANTHROPIC_BASE_URL is set)"
+        ),
     )
     parser.add_argument(
         "--timeout",

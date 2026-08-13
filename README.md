@@ -17,15 +17,36 @@ uv sync
 
 ## Configuration
 
-The only required configuration is an API key for your Claude endpoint, in
-the environment:
+Configuration is environment variables only. For a direct Claude endpoint,
+an API key is all that is required:
 
 ```sh
 export ANTHROPIC_API_KEY=...
 ```
 
-Put the export in `~/.zshenv` (sourced by every zsh invocation, unlike
+Put exports in `~/.zshenv` (sourced by every zsh invocation, unlike
 `~/.zshrc`, which interactive shells only) so the tool works from anywhere.
+
+### Gateway routing
+
+To route through an internal gateway that fronts Claude models (for example a
+workspace serving endpoint), set:
+
+```sh
+export ANTHROPIC_BASE_URL=https://<host>/serving-endpoints/anthropic
+export ANTHROPIC_AUTH_TOKEN=...   # sent as an Authorization: Bearer token
+```
+
+When `ANTHROPIC_BASE_URL` is set, the default model switches to the gateway's
+naming (`databricks-claude-sonnet-4-6`); override with `--model` if your
+endpoint serves different names. The startup banner shows the active endpoint
+so it is always clear where requests are going.
+
+If the gateway sits behind a private CA, point `ACODE_CA_BUNDLE` at the CA
+bundle file — `CHUNKER_CA_BUNDLE` is honored as a fallback, so companion
+tools on the same endpoint can share one setting. Alternatively install the
+optional `truststore` package (`uv add truststore`) to use the operating
+system's trust store.
 
 ## Usage
 
@@ -45,7 +66,7 @@ Flags:
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--model` | `claude-sonnet-5` | Claude model ID (e.g. `claude-opus-5`) |
+| `--model` | route-aware | Claude model ID; defaults to `claude-sonnet-5` direct, `databricks-claude-sonnet-4-6` via gateway |
 | `--timeout` | `120` | per-command timeout for `run_command`, in seconds |
 | `--max-tokens` | `32000` | maximum output tokens per model response |
 
