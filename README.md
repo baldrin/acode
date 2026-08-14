@@ -101,6 +101,29 @@ Flags:
 - The tool warns plainly when the conversation approaches the model's context
   limit instead of failing mysteriously.
 
+## Transcripts
+
+Every session is logged to `~/.acode/logs/<timestamp>-<workspace>.jsonl`
+(the exact path is printed at startup). One JSON object per line: your tasks,
+the model's text, every tool call, **every approval outcome and the preview
+you were shown to make it** (`approved` / `denied` / `auto_approved`), tool
+results, per-request usage, and the session totals. Large payloads are
+clipped — it is an audit trail, not a data store. If the log directory is
+unwritable the session warns and continues; logging never blocks work.
+
+Useful one-liners:
+
+```sh
+# What did it change without asking, and what did the diffs look like?
+jq -r 'select(.event=="approval" and .outcome=="auto_approved") | .preview' <log>
+
+# Every command it ran (or tried to)
+jq -r 'select(.event=="approval" and .tool=="run_command") | "\(.outcome): \(.preview)"' <log>
+
+# What did each session cost?
+jq -r 'select(.event=="session_end") | .estimated_cost_usd' ~/.acode/logs/*.jsonl
+```
+
 ## Safety model
 
 Understand what is and is not protecting you:
