@@ -13,6 +13,7 @@ from acode.cli import (
     SessionUsage,
     TrackingUI,
     _handle_command,
+    make_approver,
     resolve_model,
 )
 
@@ -158,6 +159,47 @@ class TestTrackingUI:
         ui.on_turn_stats(stats(input_tokens=7, output_tokens=8))
         assert usage.input_tokens == 7
         assert "[tokens:" in capsys.readouterr().out
+
+
+class GateRecorder:
+    """Stand-in for ConsoleUI's approval surface."""
+
+    def __init__(self, answer: bool = False) -> None:
+        self.answer = answer
+        self.asked: list[tuple[str, str]] = []
+        self.auto_approved: list[tuple[str, str]] = []
+
+    def ask_approval(self, name: str, preview: str) -> bool:
+        self.asked.append((name, preview))
+        return self.answer
+
+    def on_auto_approved(self, name: str, preview: str) -> None:
+        self.auto_approved.append((name, preview))
+
+
+class TestMakeApprover:
+    def test_default_gates_everything(self) -> None:
+        ui = GateRecorder(answer=True)
+        approve = make_approver(ui, trust_edits=False)
+        assert approve("edit_file", "diff") is True
+        assert approve("run_command", "$ ls") is True
+        assert [name for name, _ in ui.asked] == ["edit_file", "run_command"]
+        assert ui.auto_approved == []
+
+    def test_trust_edits_auto_approves_file_tools(self) -> None:
+        ui = GateRecorder(answer=False)  # would deny if ever asked
+        approve = make_approver(ui, trust_edits=True)
+        assert approve("edit_file", "diff") is True
+        assert approve("write_file", "content") is True
+        assert ui.asked == []
+        assert [name for name, _ in ui.auto_approved] == ["edit_file", "write_file"]
+
+    def test_trust_edits_still_gates_commands(self) -> None:
+        ui = GateRecorder(answer=False)
+        approve = make_approver(ui, trust_edits=True)
+        assert approve("run_command", "$ rm -rf build") is False
+        assert ui.asked == [("run_command", "$ rm -rf build")]
+        assert ui.auto_approved == []
 
 
 class TestHandleCommand:

@@ -75,6 +75,7 @@ Flags:
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--model` | route-aware | Claude model ID; defaults to `claude-sonnet-5` direct, `databricks-claude-sonnet-4-6` via gateway |
+| `--trust-edits` | off | file edits run without prompting (previews still shown, snapshots still taken); commands always stay gated |
 | `--timeout` | `120` | per-command timeout for `run_command`, in seconds |
 | `--max-tokens` | `32000` | maximum output tokens per model response |
 
@@ -104,9 +105,13 @@ Flags:
 
 Understand what is and is not protecting you:
 
-- **The approval gate is the real control.** No file edit, file write, or
-  shell command executes without your explicit `y`. There is no auto-approve
-  mode.
+- **The approval gate is the real control.** By default no file edit, file
+  write, or shell command executes without your explicit `y`. The one
+  deliberate relaxation is `--trust-edits`, opted into per invocation: file
+  edits then run without prompting — but every edit's diff is still printed
+  as it happens, the pre-task git snapshot makes them reversible, and shell
+  commands (the unbounded tool) are always gated regardless. Starting it in a
+  non-git workspace warns loudly that the snapshot net is absent.
 - **The workspace boundary**: file tools resolve every path (including
   symlinks and `..`) and refuse anything outside the launch directory.
   `.git` internals are off limits to the file tools; git operations go

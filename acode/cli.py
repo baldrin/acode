@@ -11,7 +11,7 @@ from pathlib import Path
 import anthropic
 
 from . import __version__
-from .agent import AnthropicClient, TurnStats, build_system_prompt, run_task
+from .agent import AnthropicClient, Approver, TurnStats, build_system_prompt, run_task
 from .display import ConsoleUI
 
 DIRECT_DEFAULT_MODEL = "claude-sonnet-5"
@@ -91,6 +91,28 @@ class TrackingUI(ConsoleUI):
         super().on_turn_stats(stats)
 
 
+TRUSTED_EDIT_TOOLS = frozenset({"edit_file", "write_file"})
+
+
+def make_approver(ui: ConsoleUI, *, trust_edits: bool) -> Approver:
+    """The approval policy for this session.
+
+    Default: every mutating tool prompts. With --trust-edits, file edits run
+    without prompting (their previews are still shown, and the pre-task git
+    snapshot remains the safety net); shell commands always stay gated.
+    """
+    if not trust_edits:
+        return ui.ask_approval
+
+    def approve(name: str, preview: str) -> bool:
+        if name in TRUSTED_EDIT_TOOLS:
+            ui.on_auto_approved(name, preview)
+            return True
+        return ui.ask_approval(name, preview)
+
+    return approve
+
+
 def resolve_model(flag: str | None) -> str:
     """An explicit --model wins; otherwise the default is route-aware.
 
@@ -126,6 +148,18 @@ def main(argv: list[str] | None = None) -> int:
     if base_url := os.environ.get("ANTHROPIC_BASE_URL"):
         ui.info(f"endpoint: {base_url}")
     ui.info("Ctrl+C interrupts a turn; Ctrl+D or /quit exits; /new clears; /cost shows usage.")
+    if args.trust_edits:
+        if (root / ".git").exists():
+            ui.warn(
+                "--trust-edits: file edits run without approval (git snapshots "
+                "remain the safety net); commands still require approval."
+            )
+        else:
+            ui.warn(
+                "--trust-edits in a non-git workspace: edits run without "
+                "approval AND without snapshots — clobbered files are gone."
+            )
+    approve = make_approver(ui, trust_edits=args.trust_edits)
 
     messages: list[dict[str, object]] = []
     task: str | None = args.task
@@ -139,7 +173,9 @@ def main(argv: list[str] | None = None) -> int:
             task = line
         messages.append({"role": "user", "content": task})
         task = None
-        _run_one_task(client, messages, root=root, ui=ui, model=model, timeout=args.timeout)
+        _run_one_task(
+            client, messages, root=root, ui=ui, approve=approve, model=model, timeout=args.timeout
+        )
 
     ui.info(usage.summary(model))
     return 0
@@ -173,6 +209,7 @@ def _run_one_task(
     *,
     root: Path,
     ui: ConsoleUI,
+    approve: Approver,
     model: str,
     timeout: float,
 ) -> None:
@@ -183,7 +220,7 @@ def _run_one_task(
             messages,
             root=root,
             ui=ui,
-            approve=ui.ask_approval,
+            approve=approve,
             command_timeout=timeout,
         )
     except anthropic.AuthenticationError:
@@ -237,6 +274,16 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help=(
             f"Claude model ID (default: {DIRECT_DEFAULT_MODEL}, or "
             f"{GATEWAY_DEFAULT_MODEL} when ANTHROPIC_BASE_URL is set)"
+        ),
+    )
+    parser.add_argument(
+        "--trust-edits",
+        action="store_true",
+        dest="trust_edits",
+        help=(
+            "run file edits (edit_file/write_file) without asking; their "
+            "previews are still shown and the pre-task git snapshot remains "
+            "the safety net. Shell commands always require approval."
         ),
     )
     parser.add_argument(

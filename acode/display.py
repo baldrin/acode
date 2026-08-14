@@ -84,6 +84,12 @@ class ConsoleUI:
         self._fresh_line()
         print(self._paint(message, DIM))
 
+    def on_auto_approved(self, name: str, preview: str) -> None:
+        """--trust-edits: show what is happening without stopping for a yes."""
+        self._fresh_line()
+        print(self._paint(f"⚡ {name} (auto-approved)", CYAN))
+        print(self._colorize_preview(preview))
+
     def ask_approval(self, name: str, preview: str) -> bool:
         """The gate: show what is about to happen, wait for an explicit yes."""
         self._fresh_line()
