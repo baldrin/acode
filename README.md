@@ -117,6 +117,19 @@ Understand what is and is not protecting you:
   accidents, not an adversary — read what you approve.
 - Every command runs with the launch directory as its working directory and
   is killed (with its children) if it exceeds the timeout.
+- **Commands run with a scrubbed environment**: variables that look like
+  credentials (names ending in `_TOKEN`, `_KEY`, `_SECRET`, `_PASSWORD`,
+  `_CREDENTIALS`, or starting with `ANTHROPIC_`/`AWS_`) are removed before
+  any command executes, so approved-but-hostile code cannot simply read your
+  keys out of the environment. Flip side: a command that legitimately needs
+  such a credential won't find it — run those yourself.
+- **A workspace snapshot is taken before each task's first approved
+  mutation** (git repositories only): tracked and untracked files are
+  committed to `refs/acode/snapshot` without touching your index, working
+  tree, or branches. If a task clobbers uncommitted work, restore with the
+  `git restore --source <hash> -- .` command printed alongside the snapshot.
+  Non-git workspaces get no safety net — the tool says nothing rather than
+  pretending otherwise.
 - Command execution is funneled through a single function
   (`acode.safety.execute_command`) so a sandboxed executor can replace it
   later without touching the rest of the code.

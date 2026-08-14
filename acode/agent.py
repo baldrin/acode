@@ -21,7 +21,7 @@ from typing import Any, Callable, Iterator, Protocol
 import anthropic
 import httpx
 
-from .safety import ToolError
+from .safety import ToolError, create_snapshot
 from .tools import MUTATING_TOOLS, TOOL_DEFINITIONS, build_preview, run_tool
 
 CONTEXT_WINDOW_TOKENS = 1_000_000
@@ -84,6 +84,8 @@ class UI(Protocol):
 
     def warn(self, message: str) -> None: ...
 
+    def info(self, message: str) -> None: ...
+
 
 Approver = Callable[[str, str], bool]  # (tool name, preview) -> approved?
 
@@ -119,6 +121,23 @@ def run_task(
     for follow-up tasks in the same session. On Ctrl+C the partially built
     turn is discarded, leaving the conversation consistent.
     """
+    snapshot_pending = True
+
+    def ensure_snapshot() -> None:
+        # Best-effort git snapshot of the workspace, once per task, taken
+        # just before the first approved mutation so clobbered work is
+        # recoverable. A non-git workspace silently has no safety net.
+        nonlocal snapshot_pending
+        if not snapshot_pending:
+            return
+        snapshot_pending = False
+        commit = create_snapshot(root)
+        if commit:
+            ui.info(
+                f"workspace snapshot {commit[:12]} — "
+                f"restore with: git restore --source {commit[:12]} -- ."
+            )
+
     while True:
         checkpoint = len(messages)
         try:
@@ -151,6 +170,7 @@ def run_task(
                         root=root,
                         ui=ui,
                         approve=approve,
+                        ensure_snapshot=ensure_snapshot,
                         command_timeout=command_timeout,
                     )
                     messages.append({"role": "user", "content": results})
@@ -182,6 +202,7 @@ def _execute_tool_calls(
     root: Path,
     ui: UI,
     approve: Approver,
+    ensure_snapshot: Callable[[], None],
     command_timeout: float,
 ) -> list[dict[str, Any]]:
     """Run every tool_use block and return their tool_result blocks.
@@ -199,7 +220,12 @@ def _execute_tool_calls(
             output, is_error = f"tool input must be an object, got {block.input!r}", True
         else:
             output, is_error = _run_one_tool(
-                block.name, args, root=root, approve=approve, command_timeout=command_timeout
+                block.name,
+                args,
+                root=root,
+                approve=approve,
+                ensure_snapshot=ensure_snapshot,
+                command_timeout=command_timeout,
             )
         ui.on_tool_result(output, is_error=is_error)
         result: dict[str, Any] = {
@@ -219,6 +245,7 @@ def _run_one_tool(
     *,
     root: Path,
     approve: Approver,
+    ensure_snapshot: Callable[[], None],
     command_timeout: float,
 ) -> tuple[str, bool]:
     """Execute one tool call; mutating tools pass the approval gate first."""
@@ -227,6 +254,7 @@ def _run_one_tool(
             preview = build_preview(name, args, root)
             if not approve(name, preview):
                 return DECLINED_MESSAGE, False
+            ensure_snapshot()
         return run_tool(name, args, root, timeout=command_timeout), False
     except ToolError as exc:
         return str(exc), True

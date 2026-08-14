@@ -163,8 +163,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "Run a shell command with the workspace root as the working "
             "directory and return its stdout, stderr, and exit code. Use this "
             "for git, tests, builds, and anything the file tools don't cover. "
-            "Commands time out after a configurable limit (default 120s). "
-            "Requires user approval."
+            "Commands time out after a configurable limit (default 120s) and "
+            "run with an environment scrubbed of credential-like variables "
+            "(names ending in _TOKEN/_KEY/_SECRET etc.), so commands that "
+            "need such credentials will not find them. Requires user approval."
         ),
         "input_schema": {
             "type": "object",

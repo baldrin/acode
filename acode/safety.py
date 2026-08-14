@@ -13,6 +13,7 @@ import re
 import shlex
 import signal
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -125,6 +126,32 @@ def _is_dangerous_rm(tokens: list[str], root: Path) -> bool:
     return False
 
 
+_SECRET_ENV_SUFFIXES = (
+    "_TOKEN",
+    "_KEY",
+    "_SECRET",
+    "_PASSWORD",
+    "_PASSWD",
+    "_CREDENTIALS",
+)
+_SECRET_ENV_PREFIXES = ("ANTHROPIC_", "AWS_")
+
+
+def scrubbed_environment() -> dict[str, str]:
+    """os.environ minus anything that looks like a credential.
+
+    Commands the model runs (and any code they invoke) get this environment,
+    so approved-but-hostile code cannot simply read API keys or cloud
+    credentials out of the process environment.
+    """
+
+    def is_secret(name: str) -> bool:
+        upper = name.upper()
+        return upper.startswith(_SECRET_ENV_PREFIXES) or upper.endswith(_SECRET_ENV_SUFFIXES)
+
+    return {name: value for name, value in os.environ.items() if not is_secret(name)}
+
+
 @dataclass(frozen=True)
 class CommandResult:
     stdout: str
@@ -144,6 +171,7 @@ def execute_command(command: str, root: Path, *, timeout: float = 120.0) -> Comm
         command,
         shell=True,
         cwd=root,
+        env=scrubbed_environment(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         encoding="utf-8",
@@ -164,3 +192,57 @@ def execute_command(command: str, root: Path, *, timeout: float = 120.0) -> Comm
         exit_code=process.returncode,
         timed_out=timed_out,
     )
+
+
+SNAPSHOT_REF = "refs/acode/snapshot"
+
+
+def create_snapshot(root: Path) -> str | None:
+    """Snapshot the workspace state to a git commit, best-effort.
+
+    Captures tracked *and* untracked files (gitignore respected) using a
+    throwaway index, so the user's working tree, index, and branches are
+    never touched. The commit is pinned at SNAPSHOT_REF and its hash is
+    returned; restore with ``git restore --source <hash> -- .``.
+
+    Returns None when the workspace is not a git repository or snapshotting
+    fails for any reason — the harness proceeds without the safety net.
+    """
+    if not (root / ".git").exists():
+        return None
+    identity = {
+        "GIT_AUTHOR_NAME": "acode",
+        "GIT_AUTHOR_EMAIL": "acode@localhost",
+        "GIT_COMMITTER_NAME": "acode",
+        "GIT_COMMITTER_EMAIL": "acode@localhost",
+    }
+    try:
+        with tempfile.TemporaryDirectory(prefix="acode-git-") as tmp:
+            env = {**os.environ, **identity, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
+            _git(root, env, "add", "-A", ".")
+            tree = _git(root, env, "write-tree")
+            try:
+                parent = ["-p", _git(root, env, "rev-parse", "--verify", "HEAD")]
+            except subprocess.CalledProcessError:  # repo has no commits yet
+                parent = []
+            commit = _git(
+                root, env, "commit-tree", tree, *parent, "-m", "acode workspace snapshot"
+            )
+            _git(root, env, "update-ref", SNAPSHOT_REF, commit)
+            return commit
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+
+
+def _git(root: Path, env: dict[str, str], *args: str) -> str:
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        check=True,
+        timeout=30,
+    )
+    return completed.stdout.strip()

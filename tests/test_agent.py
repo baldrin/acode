@@ -9,6 +9,8 @@ from typing import Any, Iterator
 import pytest
 
 from acode.agent import DECLINED_MESSAGE, TurnStats, run_task
+from acode.safety import SNAPSHOT_REF
+from tests.conftest import MAIN_PY, git
 
 
 # --- Fakes -----------------------------------------------------------------
@@ -93,6 +95,7 @@ class RecordingUI:
         self.tool_results: list[tuple[str, bool]] = []
         self.stats: list[TurnStats] = []
         self.warnings: list[str] = []
+        self.infos: list[str] = []
         self.turn_starts = 0
 
     def on_turn_start(self) -> None:
@@ -109,6 +112,9 @@ class RecordingUI:
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
+
+    def info(self, message: str) -> None:
+        self.infos.append(message)
 
     def on_turn_stats(self, stats: TurnStats) -> None:
         self.stats.append(stats)
@@ -336,6 +342,75 @@ class TestContextAndStats:
         client = FakeModelClient([text_turn()])
         _, ui = run(client, workspace)
         assert ui.warnings == []
+
+
+class TestWorkspaceSnapshot:
+    def test_snapshot_taken_before_first_approved_mutation(self, git_workspace: Path) -> None:
+        client = FakeModelClient(
+            [
+                tool_turn(
+                    ToolUseBlock(
+                        "t1",
+                        "edit_file",
+                        {"path": "src/main.py", "old_text": "hello", "new_text": "goodbye"},
+                    )
+                ),
+                text_turn(),
+            ]
+        )
+        _, ui = run(client, git_workspace)
+        snapshot = git(git_workspace, "rev-parse", SNAPSHOT_REF)
+        # The snapshot holds the pre-edit content; the working tree is edited.
+        assert git(git_workspace, "show", f"{snapshot}:src/main.py") == MAIN_PY.rstrip("\n")
+        assert "goodbye" in (git_workspace / "src" / "main.py").read_text()
+        assert any("workspace snapshot" in m for m in ui.infos)
+
+    def test_one_snapshot_covers_the_whole_task(self, git_workspace: Path) -> None:
+        client = FakeModelClient(
+            [
+                tool_turn(ToolUseBlock("t1", "write_file", {"path": "a.txt", "content": "a"})),
+                tool_turn(ToolUseBlock("t2", "write_file", {"path": "b.txt", "content": "b"})),
+                text_turn(),
+            ]
+        )
+        _, ui = run(client, git_workspace)
+        snapshot = git(git_workspace, "rev-parse", SNAPSHOT_REF)
+        # Taken before the first write: neither generated file is in it.
+        files = git(git_workspace, "ls-tree", "-r", "--name-only", snapshot)
+        assert "a.txt" not in files
+        assert "b.txt" not in files
+        assert sum("workspace snapshot" in m for m in ui.infos) == 1
+
+    def test_no_snapshot_when_denied(self, git_workspace: Path) -> None:
+        client = FakeModelClient(
+            [
+                tool_turn(ToolUseBlock("t1", "write_file", {"path": "a.txt", "content": "a"})),
+                text_turn(),
+            ]
+        )
+        _, ui = run(client, git_workspace, approve=lambda name, preview: False)
+        with pytest.raises(Exception):
+            git(git_workspace, "rev-parse", "--verify", SNAPSHOT_REF)
+        assert not any("workspace snapshot" in m for m in ui.infos)
+
+    def test_read_only_task_takes_no_snapshot(self, git_workspace: Path) -> None:
+        client = FakeModelClient(
+            [tool_turn(ToolUseBlock("t1", "read_file", {"path": "README.md"})), text_turn()]
+        )
+        run(client, git_workspace)
+        with pytest.raises(Exception):
+            git(git_workspace, "rev-parse", "--verify", SNAPSHOT_REF)
+
+    def test_non_git_workspace_mutates_without_snapshot(self, workspace: Path) -> None:
+        client = FakeModelClient(
+            [
+                tool_turn(ToolUseBlock("t1", "write_file", {"path": "a.txt", "content": "a"})),
+                text_turn(),
+            ]
+        )
+        _, ui = run(client, workspace)
+        assert (workspace / "a.txt").read_text() == "a"
+        assert not any("workspace snapshot" in m for m in ui.infos)
 
 
 class TestInterrupt:

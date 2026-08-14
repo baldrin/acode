@@ -7,11 +7,15 @@ from pathlib import Path
 import pytest
 
 from acode.safety import (
+    SNAPSHOT_REF,
     SafetyError,
     check_command,
+    create_snapshot,
     execute_command,
     resolve_path,
+    scrubbed_environment,
 )
+from tests.conftest import git
 
 
 class TestResolvePath:
@@ -148,3 +152,78 @@ class TestExecuteCommand:
         assert result.timed_out is True
         time.sleep(2.5)
         assert not marker.exists()
+
+    def test_secrets_are_not_visible_to_commands(
+        self, workspace: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ACME_TOKEN", "hunter2")
+        result = execute_command("printenv ACME_TOKEN", workspace)
+        assert result.exit_code != 0
+        assert "hunter2" not in result.stdout
+
+    def test_normal_environment_survives(self, workspace: Path) -> None:
+        result = execute_command("printenv PATH", workspace)
+        assert result.exit_code == 0
+        assert result.stdout.strip()
+
+
+class TestScrubbedEnvironment:
+    def test_credential_like_names_removed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        for name in (
+            "GITHUB_TOKEN",
+            "STRIPE_API_KEY",
+            "DB_PASSWORD",
+            "APP_SECRET",
+            "GCP_CREDENTIALS",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_BASE_URL",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_PROFILE",
+        ):
+            monkeypatch.setenv(name, "secret")
+        monkeypatch.setenv("EDITOR", "vim")
+        env = scrubbed_environment()
+        assert "GITHUB_TOKEN" not in env
+        assert "STRIPE_API_KEY" not in env
+        assert "DB_PASSWORD" not in env
+        assert "APP_SECRET" not in env
+        assert "GCP_CREDENTIALS" not in env
+        assert "ANTHROPIC_API_KEY" not in env
+        assert "ANTHROPIC_BASE_URL" not in env
+        assert "AWS_ACCESS_KEY_ID" not in env
+        assert "AWS_PROFILE" not in env
+        assert env["EDITOR"] == "vim"
+        assert "PATH" in env
+
+
+class TestCreateSnapshot:
+    def test_non_git_directory_returns_none(self, tmp_path: Path) -> None:
+        assert create_snapshot(tmp_path.resolve()) is None
+
+    def test_captures_tracked_and_untracked_changes(self, git_workspace: Path) -> None:
+        (git_workspace / "src" / "main.py").write_text("changed\n")
+        (git_workspace / "notes.txt").write_text("untracked\n")
+        commit = create_snapshot(git_workspace)
+        assert commit is not None
+        assert git(git_workspace, "show", f"{commit}:src/main.py") == "changed"
+        assert git(git_workspace, "show", f"{commit}:notes.txt") == "untracked"
+
+    def test_does_not_touch_index_or_working_tree(self, git_workspace: Path) -> None:
+        (git_workspace / "src" / "main.py").write_text("changed\n")
+        (git_workspace / "notes.txt").write_text("untracked\n")
+        before = git(git_workspace, "status", "--porcelain")
+        create_snapshot(git_workspace)
+        assert git(git_workspace, "status", "--porcelain") == before
+        assert (git_workspace / "src" / "main.py").read_text() == "changed\n"
+
+    def test_pins_snapshot_ref(self, git_workspace: Path) -> None:
+        commit = create_snapshot(git_workspace)
+        assert git(git_workspace, "rev-parse", SNAPSHOT_REF) == commit
+
+    def test_works_in_repo_with_no_commits(self, tmp_path: Path) -> None:
+        root = tmp_path.resolve()
+        git(root, "init", "-q", "-b", "main")
+        (root / "file.txt").write_text("content\n")
+        commit = create_snapshot(root)
+        assert commit is not None
+        assert git(root, "show", f"{commit}:file.txt") == "content"
