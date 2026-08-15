@@ -5,8 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from dataclasses import dataclass
+
 from acode.cli import SessionUsage, TrackingUI, make_approver
-from acode.transcript import CLIP_CHARS, Transcript, clip, clip_args
+from acode.transcript import CLIP_CHARS, Transcript, clip, clip_args, serialize_content
 from tests.test_agent import RecordingUI  # noqa: F401  (imported for parity checks)
 from tests.test_cli import GateRecorder, stats
 
@@ -114,6 +116,89 @@ class TestTrackingUITranscript:
         ui.on_text("no log attached")
         ui.on_turn_stats(stats(input_tokens=1))
         capsys.readouterr()
+
+
+@dataclass
+class FakeBlock:
+    text: str
+    type: str = "text"
+
+
+class TestFullMode:
+    def full_transcript(self, tmp_path: Path) -> Transcript:
+        transcript = Transcript.open(tmp_path, tmp_path / "logs", full=True)
+        assert transcript is not None
+        return transcript
+
+    def test_clipping_disabled(self, tmp_path: Path) -> None:
+        transcript = self.full_transcript(tmp_path)
+        long = "x" * (CLIP_CHARS + 500)
+        assert transcript.clipped(long) == long
+        assert transcript.clipped_args({"content": long}) == {"content": long}
+        default = Transcript.open(tmp_path, tmp_path / "logs2")
+        assert default is not None
+        assert "[clipped" in default.clipped(long)
+
+    def test_complete_messages_are_logged(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        transcript = self.full_transcript(tmp_path)
+        ui = TrackingUI(SessionUsage(), transcript)
+        ui.on_message({"role": "assistant", "content": [FakeBlock("Hi there")]})
+        ui.on_message(
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}
+        )
+        transcript.close()
+        capsys.readouterr()
+        events = read_events(transcript.path)
+        assert [e["event"] for e in events] == ["message", "message"]
+        assert events[0]["content"] == [{"text": "Hi there", "type": "text"}]
+        assert events[1]["content"][0]["tool_use_id"] == "t1"
+
+    def test_default_mode_skips_message_events(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        transcript = Transcript.open(tmp_path, tmp_path / "logs")
+        assert transcript is not None
+        ui = TrackingUI(SessionUsage(), transcript)
+        ui.on_message({"role": "assistant", "content": [FakeBlock("Hi")]})
+        transcript.close()
+        capsys.readouterr()
+        assert read_events(transcript.path) == []
+
+    def test_full_tool_results_uncllipped_in_log(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        transcript = self.full_transcript(tmp_path)
+        ui = TrackingUI(SessionUsage(), transcript)
+        big = "y" * (CLIP_CHARS + 100)
+        ui.on_tool_result(big, is_error=False)
+        transcript.close()
+        capsys.readouterr()
+        [event] = read_events(transcript.path)
+        assert event["content"] == big
+
+    def test_approval_preview_unclipped_in_full_mode(self, tmp_path: Path) -> None:
+        transcript = self.full_transcript(tmp_path)
+        ui = GateRecorder(answer=True)
+        approve = make_approver(ui, trust_edits=False, transcript=transcript)
+        big_diff = "d" * (CLIP_CHARS + 100)
+        approve("edit_file", big_diff)
+        transcript.close()
+        [event] = read_events(transcript.path)
+        assert event["preview"] == big_diff
+
+
+class TestSerializeContent:
+    def test_plain_string_passthrough(self) -> None:
+        assert serialize_content("just text") == "just text"
+
+    def test_dataclass_blocks_become_dicts(self) -> None:
+        assert serialize_content([FakeBlock("hi")]) == [{"text": "hi", "type": "text"}]
+
+    def test_dict_blocks_passthrough(self) -> None:
+        block = {"type": "tool_result", "tool_use_id": "t1", "content": "ok"}
+        assert serialize_content([block]) == [block]
 
 
 class TestApprovalLogging:

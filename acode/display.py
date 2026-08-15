@@ -59,6 +59,10 @@ class ConsoleUI:
         for line in shown:
             print(self._paint(f"  {line}", style))
 
+    def on_message(self, message: dict[str, Any]) -> None:
+        """No-op: messages are already rendered via text/tool events. Exists
+        so transcript-writing subclasses can capture complete messages."""
+
     def on_turn_stats(self, stats: TurnStats) -> None:
         self._fresh_line()
         print(

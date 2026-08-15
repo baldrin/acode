@@ -76,6 +76,7 @@ Flags:
 | --- | --- | --- |
 | `--model` | route-aware | Claude model ID; defaults to `claude-sonnet-5` direct, `databricks-claude-sonnet-4-6` via gateway |
 | `--trust-edits` | off | file edits run without prompting (previews still shown, snapshots still taken); commands always stay gated |
+| `--log-full` | off | transcript logs everything, unclipped — see Transcripts |
 | `--timeout` | `120` | per-command timeout for `run_command`, in seconds |
 | `--max-tokens` | `32000` | maximum output tokens per model response |
 
@@ -110,6 +111,22 @@ you were shown to make it** (`approved` / `denied` / `auto_approved`), tool
 results, per-request usage, and the session totals. Large payloads are
 clipped — it is an audit trail, not a data store. If the log directory is
 unwritable the session warns and continues; logging never blocks work.
+
+With `--log-full`, nothing is clipped and the log becomes a complete record
+of the model exchange: the system prompt and tool definitions at session
+start, every message sent to and received from the model as `message` events
+(complete content blocks — thinking summaries, `tool_use` ids, full tool
+results), plus everything the default logs. The conversation state at any
+point is reconstructible from the file. Two things to know: sessions can
+produce multi-megabyte logs, and **a full log contains everything the model
+read — including the contents of any file it opened**, so treat these logs
+with the same care as the repositories they describe.
+
+The model's reasoning is requested in summarized form (`thinking.display:
+"summarized"` — a server-written summary; the raw chain of thought is never
+returned by the API, and the setting does not change what thinking happens
+or what it costs). Summaries appear as `thinking` blocks inside `--log-full`
+message events; the default transcript and the terminal ignore them.
 
 Useful one-liners:
 

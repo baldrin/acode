@@ -13,7 +13,8 @@ import anthropic
 from . import __version__
 from .agent import AnthropicClient, Approver, TurnStats, build_system_prompt, run_task
 from .display import ConsoleUI
-from .transcript import Transcript, clip, clip_args
+from .tools import TOOL_DEFINITIONS
+from .transcript import Transcript, serialize_content
 
 LOG_DIR = Path.home() / ".acode" / "logs"
 
@@ -97,13 +98,29 @@ class TrackingUI(ConsoleUI):
 
     def on_tool_call(self, name: str, args: dict[str, object]) -> None:
         if self._transcript:
-            self._transcript.log("tool_call", tool=name, args=clip_args(dict(args)))
+            self._transcript.log(
+                "tool_call", tool=name, args=self._transcript.clipped_args(dict(args))
+            )
         super().on_tool_call(name, args)
 
     def on_tool_result(self, content: str, *, is_error: bool) -> None:
         if self._transcript:
-            self._transcript.log("tool_result", is_error=is_error, content=clip(content))
+            self._transcript.log(
+                "tool_result", is_error=is_error, content=self._transcript.clipped(content)
+            )
         super().on_tool_result(content, is_error=is_error)
+
+    def on_message(self, message: dict[str, object]) -> None:
+        # Complete messages (thinking blocks, tool_use ids, full results) are
+        # only recorded in --log-full mode; the clipped default already
+        # captures the human-readable view via the other events.
+        if self._transcript and self._transcript.full:
+            self._transcript.log(
+                "message",
+                role=message["role"],
+                content=serialize_content(message["content"]),
+            )
+        super().on_message(message)
 
     def on_turn_stats(self, stats: TurnStats) -> None:
         self._usage.add(stats)
@@ -155,7 +172,9 @@ def make_approver(
             approved = ui.ask_approval(name, preview)
             outcome = "approved" if approved else "denied"
         if transcript:
-            transcript.log("approval", tool=name, outcome=outcome, preview=clip(preview))
+            transcript.log(
+                "approval", tool=name, outcome=outcome, preview=transcript.clipped(preview)
+            )
         return approved
 
     return approve
@@ -178,8 +197,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     root = Path.cwd().resolve()
     model = resolve_model(args.model)
+    system = build_system_prompt(root)
     usage = SessionUsage()
-    transcript = Transcript.open(root, LOG_DIR)
+    transcript = Transcript.open(root, LOG_DIR, full=args.log_full)
     ui = TrackingUI(usage, transcript)
 
     try:
@@ -187,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
             client = AnthropicClient(
                 model=model,
                 max_tokens=args.max_tokens,
-                system=build_system_prompt(root),
+                system=system,
             )
         except anthropic.AnthropicError as exc:
             ui.error(str(exc))
@@ -201,8 +221,12 @@ def main(argv: list[str] | None = None) -> int:
                 model=model,
                 workspace=str(root),
                 trust_edits=args.trust_edits,
+                log_full=args.log_full,
                 endpoint=os.environ.get("ANTHROPIC_BASE_URL"),
             )
+            if transcript.full:
+                transcript.log("system_prompt", text=system)
+                transcript.log("tool_definitions", tools=TOOL_DEFINITIONS)
         ui.info(f"acode {__version__} — {model} — workspace {root}")
         if base_url := os.environ.get("ANTHROPIC_BASE_URL"):
             ui.info(f"endpoint: {base_url}")
@@ -355,6 +379,18 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help=(
             f"Claude model ID (default: {DIRECT_DEFAULT_MODEL}, or "
             f"{GATEWAY_DEFAULT_MODEL} when ANTHROPIC_BASE_URL is set)"
+        ),
+    )
+    parser.add_argument(
+        "--log-full",
+        action="store_true",
+        dest="log_full",
+        help=(
+            "log everything to the transcript, unclipped: the system prompt, "
+            "tool definitions, complete messages to and from the model "
+            "(thinking summaries included), and full tool results. The "
+            "default transcript clips large payloads. Note: a full log "
+            "contains everything the model read, including file contents."
         ),
     )
     parser.add_argument(

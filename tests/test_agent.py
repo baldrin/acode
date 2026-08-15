@@ -96,6 +96,7 @@ class RecordingUI:
         self.stats: list[TurnStats] = []
         self.warnings: list[str] = []
         self.infos: list[str] = []
+        self.messages: list[dict[str, Any]] = []
         self.turn_starts = 0
 
     def on_turn_start(self) -> None:
@@ -109,6 +110,9 @@ class RecordingUI:
 
     def on_tool_result(self, content: str, *, is_error: bool) -> None:
         self.tool_results.append((content, is_error))
+
+    def on_message(self, message: dict[str, Any]) -> None:
+        self.messages.append(message)
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
@@ -182,6 +186,18 @@ class TestBasicLoop:
         assert 'print("hello")' in result["content"]
         assert "is_error" not in result
         assert ui.tool_calls == [("read_file", {"path": "src/main.py"})]
+
+    def test_every_appended_message_is_reported(self, workspace: Path) -> None:
+        client = FakeModelClient(
+            [
+                tool_turn(ToolUseBlock("t1", "read_file", {"path": "README.md"})),
+                text_turn(),
+            ]
+        )
+        messages, ui = run(client, workspace)
+        # assistant, tool-results user, final assistant — in append order
+        assert [m["role"] for m in ui.messages] == ["assistant", "user", "assistant"]
+        assert ui.messages == messages[1:]
 
     def test_parallel_tool_calls_return_in_one_message(self, workspace: Path) -> None:
         client = FakeModelClient(

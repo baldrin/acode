@@ -10,6 +10,7 @@ interrupt a session.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import datetime
 from pathlib import Path
@@ -31,15 +32,39 @@ def clip_args(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def serialize_content(content: Any) -> Any:
+    """Make a message's content JSON-able (used by --log-full).
+
+    Content is either a plain string or a list of blocks — SDK pydantic
+    models, dataclasses (tests), or already-plain dicts (tool results).
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return [_serialize_block(block) for block in content]
+    return str(content)
+
+
+def _serialize_block(block: Any) -> Any:
+    if isinstance(block, dict):
+        return block
+    if hasattr(block, "model_dump"):
+        return block.model_dump()
+    if dataclasses.is_dataclass(block) and not isinstance(block, type):
+        return dataclasses.asdict(block)
+    return str(block)
+
+
 class Transcript:
-    def __init__(self, path: Path, handle: IO[str]) -> None:
+    def __init__(self, path: Path, handle: IO[str], *, full: bool = False) -> None:
         self.path = path
+        self.full = full  # --log-full: nothing is clipped, messages are logged whole
         self._handle = handle
         self._pending_text: list[str] = []
         self._closed = False
 
     @classmethod
-    def open(cls, root: Path, directory: Path) -> Transcript | None:
+    def open(cls, root: Path, directory: Path, *, full: bool = False) -> Transcript | None:
         """Create this session's log file; None if the filesystem says no."""
         try:
             directory.mkdir(parents=True, exist_ok=True)
@@ -48,7 +73,13 @@ class Transcript:
             handle = path.open("a", encoding="utf-8")
         except OSError:
             return None
-        return cls(path, handle)
+        return cls(path, handle, full=full)
+
+    def clipped(self, text: str) -> str:
+        return text if self.full else clip(text)
+
+    def clipped_args(self, args: dict[str, Any]) -> dict[str, Any]:
+        return dict(args) if self.full else clip_args(args)
 
     def log(self, event: str, **fields: Any) -> None:
         self._flush_text()

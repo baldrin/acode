@@ -80,6 +80,8 @@ class UI(Protocol):
 
     def on_tool_result(self, content: str, *, is_error: bool) -> None: ...
 
+    def on_message(self, message: dict[str, Any]) -> None: ...
+
     def on_turn_stats(self, stats: TurnStats) -> None: ...
 
     def warn(self, message: str) -> None: ...
@@ -153,6 +155,7 @@ def run_task(
             # Append the full content — tool_use and thinking blocks included;
             # dropping them breaks the next request.
             messages.append({"role": "assistant", "content": response.content})
+            ui.on_message(messages[-1])
 
             stats = _stats(response.usage)
             ui.on_turn_stats(stats)
@@ -174,6 +177,7 @@ def run_task(
                         command_timeout=command_timeout,
                     )
                     messages.append({"role": "user", "content": results})
+                    ui.on_message(messages[-1])
                 case "pause_turn":
                     continue  # server paused mid-turn; re-send to resume
                 case "end_turn" | "stop_sequence":
@@ -347,6 +351,10 @@ class AnthropicClient:
             system=self._system,
             tools=TOOL_DEFINITIONS,
             messages=messages,
+            # Visibility only: the model thinks (and bills) the same either
+            # way, but "summarized" returns a server-written summary of the
+            # reasoning in thinking blocks, which --log-full can record.
+            thinking={"type": "adaptive", "display": "summarized"},
             cache_control={"type": "ephemeral"},
         )
         return _AnthropicTurn(manager)
