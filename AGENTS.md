@@ -22,6 +22,7 @@ the code should know without rediscovering them.
 | `acode/safety.py` | path confinement, command denylist, command execution funnel |
 | `acode/sandbox.py` | OS sandbox (Seatbelt on macOS, bubblewrap on Linux) + startup probes |
 | `acode/handoff.py` | per-workspace handoff notes (save/load) |
+| `acode/resume.py` | session resume from --log-full transcripts (replay, trimming, validation) |
 | `acode/display.py` | terminal rendering, approval prompt (plain ANSI — no terminal libraries) |
 | `acode/transcript.py` | JSONL session logs |
 | `acode/cli.py` | argument parsing, the REPL, API error handling |

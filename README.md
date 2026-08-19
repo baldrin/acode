@@ -79,6 +79,7 @@ Flags:
 | `--model` | route-aware | Claude model ID; defaults to `claude-sonnet-5` direct, `databricks-claude-sonnet-4-6` via gateway |
 | `--trust-edits` | off | file edits run without prompting (previews still shown, snapshots still taken); commands always stay gated |
 | `--no-sandbox` | sandbox on | run shell commands without the OS sandbox — see Safety model |
+| `--resume` | — | restore a previous session from its `--log-full` transcript: a path, or `last` — see Resuming a session |
 | `--log-full` | off | transcript logs everything, unclipped — see Transcripts |
 | `--timeout` | `120` | per-command timeout for `run_command`, in seconds |
 | `--max-tokens` | `32000` | maximum output tokens per model response |
@@ -130,6 +131,42 @@ Delete the file to forget. Two notes: `Ctrl+D` exits without asking (there
 is no stdin left to answer with — use `/quit` to be offered), and a note is
 plain Markdown — edit it by hand if the model's summary missed something.
 
+## Resuming a session
+
+A session run with `--log-full` is fully resumable — the transcript records
+every complete message, flushed to disk as it happens, so even a crash or
+power loss leaves the whole conversation on disk up to that instant:
+
+```sh
+acode --resume last                    # this workspace's most recent transcript
+acode --resume ~/.acode/logs/<file>    # or a specific one
+```
+
+The conversation is restored exactly: the model remembers everything it did
+and said, and you continue where you left off. A short note telling the
+model the session was resumed (and that the repository may have changed
+since) is appended, and the handoff note is *not* loaded on top — the
+restored conversation already carries its own past. The new session writes
+its own full transcript containing the restored history, so a resumed
+session is itself resumable.
+
+What resume guarantees, and what it can't:
+
+- Only `--log-full` transcripts work. The default log clips payloads, so
+  the exact conversation cannot be rebuilt from it; resuming one fails with
+  an explanation. If you want crash insurance, run with `--log-full`.
+- A session that died mid-task may end with a tool call whose results never
+  arrived (or a task the model never answered). Resume trims back to the
+  last clean exchange and says how much it dropped.
+- `--resume last` matches the workspace by its full path (never a
+  same-named repository elsewhere) and refuses a transcript recorded in a
+  different workspace.
+- Resuming with a different `--model` than the transcript was recorded with
+  may be rejected by the API (thinking signatures are model-specific); the
+  banner warns and names the original model.
+- `/new` and compaction are replayed faithfully: resuming a session that
+  was cleared or compacted restores the post-clear / post-compaction state.
+
 ## Context management
 
 Long sessions no longer die at the context limit. The conversation's size is
@@ -171,7 +208,8 @@ of the model exchange: the system prompt and tool definitions at session
 start, every message sent to and received from the model as `message` events
 (complete content blocks — thinking summaries, `tool_use` ids, full tool
 results), plus everything the default logs. The conversation state at any
-point is reconstructible from the file. Two things to know: sessions can
+point is reconstructible from the file — which is what `--resume` does (see
+Resuming a session). Two things to know: sessions can
 produce multi-megabyte logs, and **a full log contains everything the model
 read — including the contents of any file it opened**, so treat these logs
 with the same care as the repositories they describe.
@@ -264,5 +302,6 @@ installed) and are skipped elsewhere. Layout:
 | `acode/safety.py` | path confinement, command denylist, command execution |
 | `acode/sandbox.py` | the OS sandbox: Seatbelt/bubblewrap wrapping, writable roots, startup probes |
 | `acode/handoff.py` | handoff notes: per-workspace save/load of the exit summary |
+| `acode/resume.py` | session resume: transcript replay, trimming, validation |
 | `acode/display.py` | terminal rendering and the approval prompt |
 | `acode/cli.py` | argument parsing, the REPL, API error handling |

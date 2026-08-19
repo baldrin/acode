@@ -27,6 +27,7 @@ from .agent import (
 )
 from .display import ConsoleUI
 from .handoff import HANDOFF_DIR, handoff_path, load_handoff, save_handoff
+from .resume import ResumedSession, ResumeError, resolve_resume, resume_note_messages
 from .sandbox import Sandbox, SandboxUnavailable, detect_sandbox
 from .tools import TOOL_DEFINITIONS
 from .transcript import Transcript, serialize_content
@@ -218,7 +219,9 @@ def main(argv: list[str] | None = None) -> int:
     root = Path.cwd().resolve()
     model = resolve_model(args.model)
     instructions = load_project_instructions(root)
-    handoff = load_handoff(root)
+    # A resumed conversation already carries its own past; loading a handoff
+    # note on top would inject a second, competing "previous session".
+    handoff = None if args.resume else load_handoff(root)
     system = build_system_prompt(root, instructions=instructions, handoff=handoff)
     usage = SessionUsage()
     transcript = Transcript.open(root, LOG_DIR, full=args.log_full)
@@ -235,6 +238,19 @@ def main(argv: list[str] | None = None) -> int:
             ui.error(str(exc))
             ui.info("Set the ANTHROPIC_API_KEY environment variable and try again.")
             return 1
+
+        resumed: ResumedSession | None = None
+        if args.resume:
+            try:
+                resumed = resolve_resume(
+                    args.resume,
+                    root,
+                    LOG_DIR,
+                    exclude=transcript.path if transcript else None,
+                )
+            except ResumeError as exc:
+                ui.error(f"cannot resume: {exc}")
+                return 1
 
         sandbox: Sandbox | None = None
         if args.no_sandbox:
@@ -277,6 +293,17 @@ def main(argv: list[str] | None = None) -> int:
             ui.info(f"transcript: {transcript.path}")
         else:
             ui.warn(f"transcript logging unavailable (cannot write to {LOG_DIR})")
+        if resumed:
+            note = f"resumed {len(resumed.messages)} messages from {resumed.source.name}"
+            if resumed.dropped:
+                note += f" ({resumed.dropped} incomplete trailing messages dropped)"
+            ui.info(note)
+            if resumed.model and resumed.model != model:
+                ui.warn(
+                    f"that transcript was recorded with model {resumed.model!r}; "
+                    f"resuming with {model!r} may be rejected by the API — "
+                    f"consider --model {resumed.model}"
+                )
         ui.info("Ctrl+C interrupts a turn; Ctrl+D or /quit exits; /help lists commands.")
         if args.trust_edits:
             if (root / ".git").exists():
@@ -292,6 +319,25 @@ def main(argv: list[str] | None = None) -> int:
         approve = make_approver(ui, trust_edits=args.trust_edits, transcript=transcript)
 
         messages: list[dict[str, object]] = []
+        if resumed:
+            messages.extend(resumed.messages)
+            messages.extend(resume_note_messages())
+            if transcript:
+                transcript.log(
+                    "resumed_from",
+                    path=str(resumed.source),
+                    messages=len(resumed.messages),
+                    dropped=resumed.dropped,
+                )
+                if transcript.full:
+                    # Replay the restored conversation into this session's own
+                    # log so a resumed session is itself resumable.
+                    for message in messages:
+                        transcript.log(
+                            "message",
+                            role=message["role"],
+                            content=serialize_content(message["content"]),
+                        )
         task: str | None = args.task
         while True:
             if task is None:
@@ -564,6 +610,18 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "(thinking summaries included), and full tool results. The "
             "default transcript clips large payloads. Note: a full log "
             "contains everything the model read, including file contents."
+        ),
+    )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        metavar="LOG|last",
+        help=(
+            "resume a previous session from its --log-full transcript: a "
+            "path under ~/.acode/logs, or 'last' for this workspace's most "
+            "recent transcript. The conversation is restored exactly (an "
+            "incomplete final exchange is trimmed); only full transcripts "
+            "are resumable."
         ),
     )
     parser.add_argument(

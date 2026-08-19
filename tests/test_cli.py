@@ -410,3 +410,12 @@ class TestOfferHandoff:
         )
         assert handoff.load_handoff(tmp_path, store) is None
         assert any("nothing saved" in w for w in console.warnings)
+
+
+class TestResumeFlag:
+    def test_resume_parses_path_or_last(self) -> None:
+        from acode.cli import _parse_args
+
+        assert _parse_args(["--resume", "last"]).resume == "last"
+        assert _parse_args(["--resume", "/some/log.jsonl"]).resume == "/some/log.jsonl"
+        assert _parse_args([]).resume is None
