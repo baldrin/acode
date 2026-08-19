@@ -17,6 +17,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from .sandbox import Sandbox
+
 
 class ToolError(Exception):
     """A tool call failed; the message is fed back to the model as an error."""
@@ -160,16 +162,23 @@ class CommandResult:
     timed_out: bool
 
 
-def execute_command(command: str, root: Path, *, timeout: float = 120.0) -> CommandResult:
+def execute_command(
+    command: str,
+    root: Path,
+    *,
+    timeout: float = 120.0,
+    sandbox: Sandbox | None = None,
+) -> CommandResult:
     """Run *command* through the shell with *root* as the working directory.
 
-    All shell execution funnels through this one function so a sandboxed
-    executor can replace it later without touching the rest of the code.
+    All shell execution funnels through this one function. With *sandbox*
+    set, the command runs under the OS sandbox (writes confined to the
+    workspace, temp, and cache dirs); without it, plain shell execution.
     On timeout the whole process group is killed and the result says so.
     """
     process = subprocess.Popen(
-        command,
-        shell=True,
+        sandbox.wrap(command) if sandbox else command,
+        shell=sandbox is None,
         cwd=root,
         env=scrubbed_environment(),
         stdout=subprocess.PIPE,

@@ -22,6 +22,7 @@ from .safety import (
     execute_command,
     resolve_path,
 )
+from .sandbox import Sandbox
 
 READ_MAX_BYTES = 50_000
 READ_MAX_LINES = 2_000
@@ -166,7 +167,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "Commands time out after a configurable limit (default 120s) and "
             "run with an environment scrubbed of credential-like variables "
             "(names ending in _TOKEN/_KEY/_SECRET etc.), so commands that "
-            "need such credentials will not find them. Requires user approval."
+            "need such credentials will not find them. Commands may also run "
+            "in an OS sandbox that blocks filesystem writes outside the "
+            "workspace (temp and cache directories excepted) — a 'permission "
+            "denied' writing elsewhere is the sandbox, not a bug to work "
+            "around. Requires user approval."
         ),
         "input_schema": {
             "type": "object",
@@ -346,9 +351,11 @@ def write_file(path: str, content: str, *, root: Path) -> str:
     return f"{verb} {path} ({len(content)} bytes)"
 
 
-def run_command(command: str, *, root: Path, timeout: float) -> str:
+def run_command(
+    command: str, *, root: Path, timeout: float, sandbox: Sandbox | None = None
+) -> str:
     check_command(command, root)
-    result = execute_command(command, root, timeout=timeout)
+    result = execute_command(command, root, timeout=timeout, sandbox=sandbox)
     parts = []
     if result.timed_out:
         parts.append(f"Command timed out after {timeout:g}s and was killed.")
@@ -399,7 +406,14 @@ def _diff(old: str, new: str, path: str) -> str:
     return "".join(lines) or "(no changes)"
 
 
-def run_tool(name: str, args: dict[str, Any], root: Path, *, timeout: float = 120.0) -> str:
+def run_tool(
+    name: str,
+    args: dict[str, Any],
+    root: Path,
+    *,
+    timeout: float = 120.0,
+    sandbox: Sandbox | None = None,
+) -> str:
     """Execute a tool by name. Raises ToolError (or SafetyError) on failure."""
     match name:
         case "read_file":
@@ -422,7 +436,9 @@ def run_tool(name: str, args: dict[str, Any], root: Path, *, timeout: float = 12
                 _require_str(args, "path"), _require_str(args, "content"), root=root
             )
         case "run_command":
-            return run_command(_require_str(args, "command"), root=root, timeout=timeout)
+            return run_command(
+                _require_str(args, "command"), root=root, timeout=timeout, sandbox=sandbox
+            )
         case _:
             raise ToolError(f"unknown tool {name!r}")
 

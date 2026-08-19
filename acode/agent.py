@@ -22,6 +22,7 @@ import anthropic
 import httpx
 
 from .safety import ToolError, create_snapshot
+from .sandbox import Sandbox
 from .tools import MUTATING_TOOLS, TOOL_DEFINITIONS, build_preview, run_tool
 
 CONTEXT_WINDOW_TOKENS = 1_000_000
@@ -116,6 +117,7 @@ def run_task(
     ui: UI,
     approve: Approver,
     command_timeout: float = 120.0,
+    sandbox: Sandbox | None = None,
 ) -> None:
     """Run one task until the model stops calling tools.
 
@@ -175,6 +177,7 @@ def run_task(
                         approve=approve,
                         ensure_snapshot=ensure_snapshot,
                         command_timeout=command_timeout,
+                        sandbox=sandbox,
                     )
                     messages.append({"role": "user", "content": results})
                     ui.on_message(messages[-1])
@@ -208,6 +211,7 @@ def _execute_tool_calls(
     approve: Approver,
     ensure_snapshot: Callable[[], None],
     command_timeout: float,
+    sandbox: Sandbox | None,
 ) -> list[dict[str, Any]]:
     """Run every tool_use block and return their tool_result blocks.
 
@@ -230,6 +234,7 @@ def _execute_tool_calls(
                 approve=approve,
                 ensure_snapshot=ensure_snapshot,
                 command_timeout=command_timeout,
+                sandbox=sandbox,
             )
         ui.on_tool_result(output, is_error=is_error)
         result: dict[str, Any] = {
@@ -251,6 +256,7 @@ def _run_one_tool(
     approve: Approver,
     ensure_snapshot: Callable[[], None],
     command_timeout: float,
+    sandbox: Sandbox | None,
 ) -> tuple[str, bool]:
     """Execute one tool call; mutating tools pass the approval gate first."""
     try:
@@ -259,7 +265,7 @@ def _run_one_tool(
             if not approve(name, preview):
                 return DECLINED_MESSAGE, False
             ensure_snapshot()
-        return run_tool(name, args, root, timeout=command_timeout), False
+        return run_tool(name, args, root, timeout=command_timeout, sandbox=sandbox), False
     except ToolError as exc:
         return str(exc), True
 

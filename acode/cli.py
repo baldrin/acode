@@ -13,6 +13,7 @@ import anthropic
 from . import __version__
 from .agent import AnthropicClient, Approver, TurnStats, build_system_prompt, run_task
 from .display import ConsoleUI
+from .sandbox import Sandbox, SandboxUnavailable, detect_sandbox
 from .tools import TOOL_DEFINITIONS
 from .transcript import Transcript, serialize_content
 
@@ -214,6 +215,16 @@ def main(argv: list[str] | None = None) -> int:
             ui.info("Set the ANTHROPIC_API_KEY environment variable and try again.")
             return 1
 
+        sandbox: Sandbox | None = None
+        if args.no_sandbox:
+            sandbox_note = "sandbox disabled by --no-sandbox — command writes are unconfined."
+        else:
+            try:
+                sandbox = detect_sandbox(root)
+                sandbox_note = f"sandbox: {sandbox.describe()}"
+            except SandboxUnavailable as exc:
+                sandbox_note = f"sandbox unavailable: {exc} — command writes are unconfined."
+
         if transcript:
             transcript.log(
                 "session_start",
@@ -222,6 +233,7 @@ def main(argv: list[str] | None = None) -> int:
                 workspace=str(root),
                 trust_edits=args.trust_edits,
                 log_full=args.log_full,
+                sandbox=sandbox.kind if sandbox else None,
                 endpoint=os.environ.get("ANTHROPIC_BASE_URL"),
             )
             if transcript.full:
@@ -230,6 +242,10 @@ def main(argv: list[str] | None = None) -> int:
         ui.info(f"acode {__version__} — {model} — workspace {root}")
         if base_url := os.environ.get("ANTHROPIC_BASE_URL"):
             ui.info(f"endpoint: {base_url}")
+        if sandbox:
+            ui.info(sandbox_note)
+        else:
+            ui.warn(sandbox_note)
         if transcript:
             ui.info(f"transcript: {transcript.path}")
         else:
@@ -265,7 +281,14 @@ def main(argv: list[str] | None = None) -> int:
             messages.append({"role": "user", "content": task})
             task = None
             _run_one_task(
-                client, messages, root=root, ui=ui, approve=approve, model=model, timeout=args.timeout
+                client,
+                messages,
+                root=root,
+                ui=ui,
+                approve=approve,
+                model=model,
+                timeout=args.timeout,
+                sandbox=sandbox,
             )
 
         ui.info(usage.summary(model))
@@ -317,6 +340,7 @@ def _run_one_task(
     approve: Approver,
     model: str,
     timeout: float,
+    sandbox: Sandbox | None = None,
 ) -> None:
     """Run one task; API failures are reported and the REPL survives them."""
     try:
@@ -327,6 +351,7 @@ def _run_one_task(
             ui=ui,
             approve=approve,
             command_timeout=timeout,
+            sandbox=sandbox,
         )
     except anthropic.AuthenticationError:
         ui.error("Authentication failed — check ANTHROPIC_API_KEY.")
@@ -401,6 +426,17 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             "run file edits (edit_file/write_file) without asking; their "
             "previews are still shown and the pre-task git snapshot remains "
             "the safety net. Shell commands always require approval."
+        ),
+    )
+    parser.add_argument(
+        "--no-sandbox",
+        action="store_true",
+        dest="no_sandbox",
+        help=(
+            "run shell commands without the OS sandbox. By default (when "
+            "sandbox-exec on macOS or bubblewrap on Linux is available and "
+            "passes a startup probe) commands may only write inside the "
+            "workspace, temp, and cache directories."
         ),
     )
     parser.add_argument(

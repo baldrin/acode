@@ -76,6 +76,7 @@ Flags:
 | --- | --- | --- |
 | `--model` | route-aware | Claude model ID; defaults to `claude-sonnet-5` direct, `databricks-claude-sonnet-4-6` via gateway |
 | `--trust-edits` | off | file edits run without prompting (previews still shown, snapshots still taken); commands always stay gated |
+| `--no-sandbox` | sandbox on | run shell commands without the OS sandbox — see Safety model |
 | `--log-full` | off | transcript logs everything, unclipped — see Transcripts |
 | `--timeout` | `120` | per-command timeout for `run_command`, in seconds |
 | `--max-tokens` | `32000` | maximum output tokens per model response |
@@ -160,6 +161,19 @@ Understand what is and is not protecting you:
   even prompted, obvious footguns are rejected: `sudo`, `rm -rf` aimed at the
   workspace root or above, and piping a download into a shell. It catches
   accidents, not an adversary — read what you approve.
+- **Commands run inside an OS sandbox that confines filesystem writes** to
+  the workspace plus temp and cache directories (so builds and package
+  managers keep working). macOS uses Seatbelt (`sandbox-exec`, ships with
+  the OS); Linux uses [bubblewrap](https://github.com/containers/bubblewrap)
+  (`apt install bubblewrap` / `dnf install bubblewrap`). Reads and network
+  are deliberately left open in this first version: commands are individually
+  approved, and the credential scrub (below) covers the obvious exfiltration
+  path. The sandbox is probed at startup — a trivial command must succeed
+  *and* a write outside the workspace must fail — so a missing or broken
+  mechanism is reported in the banner rather than silently trusted, and the
+  session runs unconfined with a warning (as it always did). `--no-sandbox`
+  opts out explicitly. Like everything here, this is defense-in-depth behind
+  the approval gate, not a substitute for reading what you approve.
 - Every command runs with the launch directory as its working directory and
   is killed (with its children) if it exceeds the timeout.
 - **Commands run with a scrubbed environment**: variables that look like
@@ -176,8 +190,8 @@ Understand what is and is not protecting you:
   Non-git workspaces get no safety net — the tool says nothing rather than
   pretending otherwise.
 - Command execution is funneled through a single function
-  (`acode.safety.execute_command`) so a sandboxed executor can replace it
-  later without touching the rest of the code.
+  (`acode.safety.execute_command`), which is where the sandbox wraps the
+  command; a stricter executor can still replace it in one place.
 
 ## Development
 
@@ -186,12 +200,15 @@ uv run pytest
 ```
 
 Tests use a fake model client (no network) and run file/shell tools only
-inside temporary directories. Layout:
+inside temporary directories. Sandbox integration tests exercise the real OS
+mechanism where one is present (always on macOS; on Linux when bubblewrap is
+installed) and are skipped elsewhere. Layout:
 
 | File | Contents |
 | --- | --- |
 | `acode/agent.py` | the agent loop, top to bottom, plus the real API backend |
 | `acode/tools.py` | the seven tools: schemas, implementations, previews |
 | `acode/safety.py` | path confinement, command denylist, command execution |
+| `acode/sandbox.py` | the OS sandbox: Seatbelt/bubblewrap wrapping, writable roots, startup probes |
 | `acode/display.py` | terminal rendering and the approval prompt |
 | `acode/cli.py` | argument parsing, the REPL, API error handling |
