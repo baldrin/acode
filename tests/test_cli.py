@@ -325,3 +325,20 @@ class TestCompactCommand:
         usage.add(stats(input_tokens=500, output_tokens=20))
         _handle_command("/cost", messages=[], usage=usage, model="m", ui=console)
         assert any("context: ~520" in m for m in console.infos)
+
+
+class TestHelpCommand:
+    def test_help_lists_every_command(self) -> None:
+        console = RecordingConsole()
+        handled = _handle_command(
+            "/help", messages=[], usage=SessionUsage(), model="m", ui=console
+        )
+        assert handled is True
+        listed = "\n".join(console.infos)
+        for name in ("/new", "/compact", "/cost", "/help", "/quit"):
+            assert name in listed
+
+    def test_unknown_command_points_at_help(self) -> None:
+        console = RecordingConsole()
+        _handle_command("/teleport", messages=[], usage=SessionUsage(), model="m", ui=console)
+        assert any("/help" in w for w in console.warnings)

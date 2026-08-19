@@ -266,10 +266,7 @@ def main(argv: list[str] | None = None) -> int:
             ui.info(f"transcript: {transcript.path}")
         else:
             ui.warn(f"transcript logging unavailable (cannot write to {LOG_DIR})")
-        ui.info(
-            "Ctrl+C interrupts a turn; Ctrl+D or /quit exits; /new clears; "
-            "/compact summarizes to free context; /cost shows usage."
-        )
+        ui.info("Ctrl+C interrupts a turn; Ctrl+D or /quit exits; /help lists commands.")
         if args.trust_edits:
             if (root / ".git").exists():
                 ui.warn(
@@ -339,6 +336,15 @@ def main(argv: list[str] | None = None) -> int:
             transcript.close()
 
 
+COMMANDS = (
+    ("/new", "clear the conversation and start fresh"),
+    ("/compact", "summarize the conversation into a handoff note and continue from it"),
+    ("/cost", "show session token totals, estimated cost, and context size"),
+    ("/help", "show this list"),
+    ("/quit", "exit (also /exit or Ctrl+D)"),
+)
+
+
 def _handle_command(
     line: str,
     *,
@@ -370,8 +376,13 @@ def _handle_command(
             f"(auto-compacts at {COMPACT_THRESHOLD_TOKENS:,})"
         )
         return True
+    if line == "/help":
+        width = max(len(name) for name, _ in COMMANDS)
+        for name, description in COMMANDS:
+            ui.info(f"{name:<{width}}  {description}")
+        return True
     if line.startswith("/"):
-        ui.warn(f"Unknown command {line!r}. Commands: /new, /compact, /cost, /quit")
+        ui.warn(f"Unknown command {line!r} — /help lists the commands.")
         return True
     return False
 

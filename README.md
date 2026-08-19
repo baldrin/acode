@@ -69,6 +69,7 @@ Commands at the prompt:
 | `/new` | clear the conversation and start fresh |
 | `/compact` | summarize the conversation into a handoff note and continue from it (see Context management) |
 | `/cost` | show session token totals, the estimated cost so far, and the current context size |
+| `/help` | list the commands |
 | `/quit` | exit (also `Ctrl+D`) |
 
 Flags:
