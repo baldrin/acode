@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 from dataclasses import dataclass
@@ -11,7 +12,17 @@ from pathlib import Path
 import anthropic
 
 from . import __version__
-from .agent import AnthropicClient, Approver, TurnStats, build_system_prompt, run_task
+from .agent import (
+    COMPACT_THRESHOLD_TOKENS,
+    CONTEXT_WINDOW_TOKENS,
+    AnthropicClient,
+    Approver,
+    ModelClient,
+    TurnStats,
+    build_system_prompt,
+    compact_conversation,
+    run_task,
+)
 from .display import ConsoleUI
 from .sandbox import Sandbox, SandboxUnavailable, detect_sandbox
 from .tools import TOOL_DEFINITIONS
@@ -51,12 +62,17 @@ class SessionUsage:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
+    # Size of the conversation after the most recent response — the last
+    # request's full prompt plus what the model added to it. Reset to 0 when
+    # the conversation is cleared or compacted (unknown until the next request).
+    context_tokens: int = 0
 
     def add(self, stats: TurnStats) -> None:
         self.input_tokens += stats.input_tokens
         self.output_tokens += stats.output_tokens
         self.cache_read_tokens += stats.cache_read_tokens
         self.cache_creation_tokens += stats.cache_creation_tokens
+        self.context_tokens = stats.total_prompt_tokens + stats.output_tokens
 
     def estimated_cost_usd(self, model: str) -> float | None:
         """Dollar estimate, or None when the model's pricing is unknown."""
@@ -250,7 +266,10 @@ def main(argv: list[str] | None = None) -> int:
             ui.info(f"transcript: {transcript.path}")
         else:
             ui.warn(f"transcript logging unavailable (cannot write to {LOG_DIR})")
-        ui.info("Ctrl+C interrupts a turn; Ctrl+D or /quit exits; /new clears; /cost shows usage.")
+        ui.info(
+            "Ctrl+C interrupts a turn; Ctrl+D or /quit exits; /new clears; "
+            "/compact summarizes to free context; /cost shows usage."
+        )
         if args.trust_edits:
             if (root / ".git").exists():
                 ui.warn(
@@ -272,7 +291,13 @@ def main(argv: list[str] | None = None) -> int:
                 if line is None or line in {"/quit", "/exit"}:
                     break
                 if _handle_command(
-                    line, messages=messages, usage=usage, model=model, ui=ui, transcript=transcript
+                    line,
+                    messages=messages,
+                    usage=usage,
+                    model=model,
+                    ui=ui,
+                    transcript=transcript,
+                    client=client,
                 ):
                     continue
                 task = line
@@ -290,6 +315,14 @@ def main(argv: list[str] | None = None) -> int:
                 timeout=args.timeout,
                 sandbox=sandbox,
             )
+            if usage.context_tokens >= COMPACT_THRESHOLD_TOKENS:
+                ui.warn(
+                    f"Context reached {usage.context_tokens:,} of "
+                    f"~{CONTEXT_WINDOW_TOKENS:,} tokens — compacting automatically."
+                )
+                _compact(
+                    client, messages, ui=ui, usage=usage, model=model, transcript=transcript
+                )
 
         ui.info(usage.summary(model))
         return 0
@@ -314,19 +347,31 @@ def _handle_command(
     model: str,
     ui: ConsoleUI,
     transcript: Transcript | None = None,
+    client: ModelClient | None = None,
 ) -> bool:
     """Handle a /command; returns True if the line was consumed."""
     if transcript and line.startswith("/"):
         transcript.log("command", command=line)
     if line == "/new":
         messages.clear()
+        usage.context_tokens = 0
         ui.info("Conversation cleared — next task starts fresh.")
+        return True
+    if line == "/compact":
+        if client is None:
+            ui.warn("No model client available to compact with.")
+        else:
+            _compact(client, messages, ui=ui, usage=usage, model=model, transcript=transcript)
         return True
     if line == "/cost":
         ui.info(usage.summary(model))
+        ui.info(
+            f"context: ~{usage.context_tokens:,} of ~{CONTEXT_WINDOW_TOKENS:,} tokens "
+            f"(auto-compacts at {COMPACT_THRESHOLD_TOKENS:,})"
+        )
         return True
     if line.startswith("/"):
-        ui.warn(f"Unknown command {line!r}. Commands: /new, /cost, /quit")
+        ui.warn(f"Unknown command {line!r}. Commands: /new, /compact, /cost, /quit")
         return True
     return False
 
@@ -343,7 +388,7 @@ def _run_one_task(
     sandbox: Sandbox | None = None,
 ) -> None:
     """Run one task; API failures are reported and the REPL survives them."""
-    try:
+    with _api_errors(ui, model):
         run_task(
             client,
             messages,
@@ -353,6 +398,13 @@ def _run_one_task(
             command_timeout=timeout,
             sandbox=sandbox,
         )
+
+
+@contextlib.contextmanager
+def _api_errors(ui: ConsoleUI, model: str):
+    """Report API failures readably instead of crashing the REPL."""
+    try:
+        yield
     except anthropic.AuthenticationError:
         ui.error("Authentication failed — check ANTHROPIC_API_KEY.")
     except anthropic.PermissionDeniedError as exc:
@@ -369,6 +421,42 @@ def _run_one_task(
         ui.error(f"API error {exc.status_code}: {exc.message}")
     except anthropic.APIConnectionError:
         ui.error("Could not reach the model endpoint — check your network connection.")
+
+
+def _compact(
+    client: ModelClient,
+    messages: list[dict[str, object]],
+    *,
+    ui: ConsoleUI,
+    usage: SessionUsage,
+    model: str,
+    transcript: Transcript | None,
+) -> None:
+    """Compact the conversation, reporting the outcome; failures change nothing."""
+    if not messages:
+        ui.info("Nothing to compact — the conversation is empty.")
+        return
+    before = usage.context_tokens
+    ui.info(f"compacting conversation (~{before:,} tokens)…")
+    compacted: bool | None = None  # None: the request itself failed (already reported)
+    try:
+        with _api_errors(ui, model):
+            compacted = compact_conversation(client, messages, ui=ui)
+    except KeyboardInterrupt:
+        ui.warn("Compaction interrupted — conversation unchanged.")
+        return
+    if compacted:
+        usage.context_tokens = 0
+        summary = messages[0]["content"]
+        if transcript:
+            transcript.log(
+                "compact", tokens_before=before, summary=transcript.clipped(str(summary))
+            )
+        ui.info("Conversation compacted — the session continues from the handoff summary.")
+    elif compacted is False:
+        ui.warn("Compaction produced no summary — conversation unchanged.")
+    else:
+        ui.warn("Conversation unchanged.")
 
 
 def _read_line() -> str | None:

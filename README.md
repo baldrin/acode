@@ -66,8 +66,9 @@ Commands at the prompt:
 
 | Command | Effect |
 | --- | --- |
-| `/new` | clear the conversation and start fresh (the response to the context warning) |
-| `/cost` | show session token totals and the estimated cost so far |
+| `/new` | clear the conversation and start fresh |
+| `/compact` | summarize the conversation into a handoff note and continue from it (see Context management) |
+| `/cost` | show session token totals, the estimated cost so far, and the current context size |
 | `/quit` | exit (also `Ctrl+D`) |
 
 Flags:
@@ -101,7 +102,34 @@ Flags:
   prefixes (including gateway-served names); an unknown model reports tokens
   only rather than guessing.
 - The tool warns plainly when the conversation approaches the model's context
-  limit instead of failing mysteriously.
+  limit, and compacts it automatically at the next task boundary — see
+  Context management.
+
+## Context management
+
+Long sessions no longer die at the context limit. The conversation's size is
+tracked from each response's usage numbers, and when it crosses ~750k of the
+~1M-token window at a task boundary, acode **compacts** it: the model writes
+a handoff summary of the session (tasks and their status, changes made, key
+decisions, failed approaches, next steps), and the conversation is replaced
+by that summary. Work continues from there — the model re-reads files when
+it needs details the summary dropped.
+
+Things worth knowing:
+
+- Compaction is one extra model request over the full conversation; its
+  tokens are counted in `/cost` like any other request. The summary itself is
+  logged to the transcript (a `compact` event) but not printed.
+- Mid-task the tool only warns (compacting mid-task would derail the model);
+  the compaction happens when the task finishes.
+- `/compact` triggers it manually at any prompt — useful before starting a
+  large new task on a long conversation. `/new` remains the blunt option:
+  clear everything, keep nothing.
+- After compacting, the prompt cache starts cold on the next request (the
+  conversation prefix changed), so expect one request with a large
+  `cache write` before reads resume.
+- A failed or interrupted compaction changes nothing — the conversation is
+  only replaced once a summary actually exists.
 
 ## Transcripts
 

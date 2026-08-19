@@ -8,7 +8,7 @@ from typing import Any, Iterator
 
 import pytest
 
-from acode.agent import DECLINED_MESSAGE, TurnStats, run_task
+from acode.agent import DECLINED_MESSAGE, TurnStats, compact_conversation, run_task
 from acode.safety import SNAPSHOT_REF
 from tests.conftest import MAIN_PY, git
 
@@ -450,3 +450,57 @@ class TestInterrupt:
         assert [m["role"] for m in messages] == ["user"]
         assert not (workspace / "new.txt").exists()
         assert any("Interrupted" in w for w in ui.warnings)
+
+
+class TestCompaction:
+    def history(self) -> list[dict[str, Any]]:
+        return [
+            {"role": "user", "content": "refactor the parser"},
+            {"role": "assistant", "content": [TextBlock("Done — parser refactored.")]},
+        ]
+
+    def test_replaces_conversation_with_summary_pair(self) -> None:
+        client = FakeModelClient([text_turn("Parser was refactored; tests pass; nothing pending.")])
+        messages = self.history()
+        ui = RecordingUI()
+        assert compact_conversation(client, messages, ui=ui) is True
+        assert [m["role"] for m in messages] == ["user", "assistant"]
+        assert "Parser was refactored" in messages[0]["content"]
+        assert "compacted" in messages[0]["content"]  # the header explains what happened
+        # the request carried the whole conversation plus the summarize instruction
+        request = client.requests[0]
+        assert request[0]["content"] == "refactor the parser"
+        assert "handoff summary" in request[-1]["content"].lower()
+        # usage of the extra request is reported, and the new state is observable
+        assert len(ui.stats) == 1
+        assert ui.messages == messages
+
+    def test_summary_not_streamed_to_terminal(self) -> None:
+        client = FakeModelClient([text_turn("the summary")])
+        ui = RecordingUI()
+        compact_conversation(client, self.history(), ui=ui)
+        assert ui.text == []
+
+    def test_no_summary_text_leaves_conversation_untouched(self) -> None:
+        client = FakeModelClient([FakeTurn(FakeResponse([], "end_turn"))])
+        messages = self.history()
+        before = [dict(m) for m in messages]
+        ui = RecordingUI()
+        assert compact_conversation(client, messages, ui=ui) is False
+        assert messages == before
+
+    def test_text_is_extracted_even_if_model_calls_tools(self) -> None:
+        response = FakeResponse(
+            [TextBlock("summary text"), ToolUseBlock("t1", "read_file", {"path": "x"})],
+            "tool_use",
+        )
+        client = FakeModelClient([FakeTurn(response)])
+        messages = self.history()
+        ui = RecordingUI()
+        assert compact_conversation(client, messages, ui=ui) is True
+        assert "summary text" in messages[0]["content"]
+
+    def test_turn_is_closed_even_on_failure(self) -> None:
+        client = FakeModelClient([FakeTurn(FakeResponse([], "end_turn"))])
+        compact_conversation(client, self.history(), ui=RecordingUI())
+        assert client.created_turns[0].closed

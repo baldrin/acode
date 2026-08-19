@@ -16,6 +16,7 @@ from acode.cli import (
     make_approver,
     resolve_model,
 )
+from tests.test_agent import FakeModelClient, FakeResponse, FakeTurn, text_turn
 
 
 def stats(
@@ -237,3 +238,90 @@ class TestHandleCommand:
             "fix the bug", messages=[], usage=SessionUsage(), model="m", ui=console
         )
         assert handled is False
+
+
+class TestContextTracking:
+    def test_context_follows_last_request_plus_output(self) -> None:
+        usage = SessionUsage()
+        usage.add(stats(input_tokens=10, output_tokens=5, cache_read=100, cache_creation=50))
+        assert usage.context_tokens == 165
+        usage.add(stats(input_tokens=200, output_tokens=30))
+        assert usage.context_tokens == 230  # replaced, not accumulated
+
+
+class CompactConsole(RecordingConsole):
+    """RecordingConsole extended with the UI surface compaction touches."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.errors: list[str] = []
+        self.messages: list[dict[str, object]] = []
+
+    def on_turn_start(self) -> None: ...
+
+    def on_turn_stats(self, stats: TurnStats) -> None: ...
+
+    def on_message(self, message: dict[str, object]) -> None:
+        self.messages.append(message)
+
+    def error(self, message: str) -> None:
+        self.errors.append(message)
+
+
+class TestCompactCommand:
+    def test_compact_replaces_conversation(self) -> None:
+        console = CompactConsole()
+        client = FakeModelClient([text_turn("everything is done; nothing pending")])
+        messages: list[dict[str, object]] = [
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "done"},
+        ]
+        usage = SessionUsage()
+        usage.add(stats(input_tokens=500, output_tokens=20))
+        handled = _handle_command(
+            "/compact", messages=messages, usage=usage, model="m", ui=console, client=client
+        )
+        assert handled is True
+        assert len(messages) == 2
+        assert "everything is done" in str(messages[0]["content"])
+        assert usage.context_tokens == 0
+        assert any("compacted" in m for m in console.infos)
+
+    def test_compact_with_empty_conversation(self) -> None:
+        console = CompactConsole()
+        client = FakeModelClient([])
+        handled = _handle_command(
+            "/compact", messages=[], usage=SessionUsage(), model="m", ui=console, client=client
+        )
+        assert handled is True
+        assert client.requests == []
+        assert any("Nothing to compact" in m for m in console.infos)
+
+    def test_failed_compaction_changes_nothing(self) -> None:
+        console = CompactConsole()
+        client = FakeModelClient([FakeTurn(FakeResponse([], "end_turn"))])
+        messages: list[dict[str, object]] = [{"role": "user", "content": "task"}]
+        usage = SessionUsage()
+        usage.add(stats(input_tokens=500, output_tokens=20))
+        _handle_command(
+            "/compact", messages=messages, usage=usage, model="m", ui=console, client=client
+        )
+        assert messages == [{"role": "user", "content": "task"}]
+        assert usage.context_tokens == 520  # not reset — nothing was freed
+        assert any("no summary" in w for w in console.warnings)
+
+    def test_new_resets_context_tokens(self) -> None:
+        usage = SessionUsage()
+        usage.add(stats(input_tokens=500, output_tokens=20))
+        _handle_command(
+            "/new", messages=[{"role": "user", "content": "x"}], usage=usage,
+            model="m", ui=RecordingConsole(),
+        )
+        assert usage.context_tokens == 0
+
+    def test_cost_reports_context(self) -> None:
+        console = RecordingConsole()
+        usage = SessionUsage()
+        usage.add(stats(input_tokens=500, output_tokens=20))
+        _handle_command("/cost", messages=[], usage=usage, model="m", ui=console)
+        assert any("context: ~520" in m for m in console.infos)

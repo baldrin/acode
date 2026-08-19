@@ -26,9 +26,60 @@ from .sandbox import Sandbox
 from .tools import MUTATING_TOOLS, TOOL_DEFINITIONS, build_preview, run_tool
 
 CONTEXT_WINDOW_TOKENS = 1_000_000
-CONTEXT_WARNING_TOKENS = 800_000
+COMPACT_THRESHOLD_TOKENS = 750_000  # auto-compact between tasks above this
+CONTEXT_WARNING_TOKENS = 800_000  # mid-task warning; compaction runs at the task boundary
 
 DECLINED_MESSAGE = "User declined this action."
+
+COMPACT_PROMPT = """\
+The conversation is approaching the context limit. Write a handoff summary
+that would let you continue this session in a fresh conversation with no
+other memory of it. Include: the user's task(s) and their current status;
+what was changed (files, commands run) and why; key discoveries, decisions,
+and constraints; approaches that failed and should not be retried; and what
+remains to be done, with concrete next steps. Reply with only the summary —
+do not use tools."""
+
+COMPACT_HEADER = (
+    "[The conversation so far was compacted to stay within the context "
+    "window. Handoff summary of the session:]"
+)
+
+
+def compact_conversation(client: ModelClient, messages: list[dict[str, Any]], *, ui: UI) -> bool:
+    """Replace the conversation with a model-written handoff summary.
+
+    One extra model request; its usage is reported through the normal stats
+    channel so session accounting stays truthful. The summary is not streamed
+    to the terminal — it exists for the model, not the user. Returns False
+    (leaving ``messages`` untouched) when the model produced no summary text.
+    """
+    ui.on_turn_start()
+    turn = client.create_turn(messages + [{"role": "user", "content": COMPACT_PROMPT}])
+    try:
+        for _ in turn.stream_text():
+            pass
+        response = turn.final_message()
+    finally:
+        turn.close()
+    ui.on_turn_stats(_stats(response.usage))
+    summary = "".join(
+        block.text for block in response.content if getattr(block, "type", None) == "text"
+    ).strip()
+    if not summary:
+        return False
+    # A user/assistant pair keeps roles alternating for the next task's
+    # user message, whatever the endpoint's strictness about ordering.
+    messages[:] = [
+        {"role": "user", "content": f"{COMPACT_HEADER}\n\n{summary}"},
+        {
+            "role": "assistant",
+            "content": "Understood — I have the context from the summary and will continue from there.",
+        },
+    ]
+    for message in messages:
+        ui.on_message(message)
+    return True
 
 
 def build_system_prompt(root: Path) -> str:
@@ -164,8 +215,8 @@ def run_task(
             if stats.total_prompt_tokens >= CONTEXT_WARNING_TOKENS:
                 ui.warn(
                     f"Context is at {stats.total_prompt_tokens:,} of "
-                    f"~{CONTEXT_WINDOW_TOKENS:,} tokens; consider wrapping up "
-                    "and starting a fresh session."
+                    f"~{CONTEXT_WINDOW_TOKENS:,} tokens; the conversation "
+                    "will be compacted when this task finishes."
                 )
 
             match response.stop_reason:
