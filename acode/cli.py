@@ -21,9 +21,12 @@ from .agent import (
     TurnStats,
     build_system_prompt,
     compact_conversation,
+    load_project_instructions,
     run_task,
+    summarize_conversation,
 )
 from .display import ConsoleUI
+from .handoff import HANDOFF_DIR, handoff_path, load_handoff, save_handoff
 from .sandbox import Sandbox, SandboxUnavailable, detect_sandbox
 from .tools import TOOL_DEFINITIONS
 from .transcript import Transcript, serialize_content
@@ -214,7 +217,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     root = Path.cwd().resolve()
     model = resolve_model(args.model)
-    system = build_system_prompt(root)
+    instructions = load_project_instructions(root)
+    handoff = load_handoff(root)
+    system = build_system_prompt(root, instructions=instructions, handoff=handoff)
     usage = SessionUsage()
     transcript = Transcript.open(root, LOG_DIR, full=args.log_full)
     ui = TrackingUI(usage, transcript)
@@ -250,6 +255,8 @@ def main(argv: list[str] | None = None) -> int:
                 trust_edits=args.trust_edits,
                 log_full=args.log_full,
                 sandbox=sandbox.kind if sandbox else None,
+                instructions=instructions[0] if instructions else None,
+                handoff=handoff[0] if handoff else None,
                 endpoint=os.environ.get("ANTHROPIC_BASE_URL"),
             )
             if transcript.full:
@@ -262,6 +269,10 @@ def main(argv: list[str] | None = None) -> int:
             ui.info(sandbox_note)
         else:
             ui.warn(sandbox_note)
+        if instructions:
+            ui.info(f"project instructions: {instructions[0]}")
+        if handoff:
+            ui.info(f"handoff note from {handoff[0]} loaded — delete to forget: {handoff_path(root)}")
         if transcript:
             ui.info(f"transcript: {transcript.path}")
         else:
@@ -321,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
                     client, messages, ui=ui, usage=usage, model=model, transcript=transcript
                 )
 
+        _offer_handoff(client, messages, root=root, ui=ui, model=model, transcript=transcript)
         ui.info(usage.summary(model))
         return 0
     finally:
@@ -385,6 +397,43 @@ def _handle_command(
         ui.warn(f"Unknown command {line!r} — /help lists the commands.")
         return True
     return False
+
+
+def _offer_handoff(
+    client: ModelClient,
+    messages: list[dict[str, object]],
+    *,
+    root: Path,
+    ui: ConsoleUI,
+    model: str,
+    transcript: Transcript | None,
+) -> None:
+    """On exit with a conversation, offer to save a handoff note.
+
+    Ctrl+D exits leave no stdin to answer with, so the question falls
+    through to "no" — /quit is the path that gets asked.
+    """
+    if not messages:
+        return
+    if not ui.confirm("Save a handoff note for the next session?"):
+        return
+    summary: str | None = None
+    try:
+        with _api_errors(ui, model):
+            summary = summarize_conversation(client, messages, ui=ui)
+    except KeyboardInterrupt:
+        ui.warn("Handoff skipped.")
+        return
+    if not summary:
+        ui.warn("No handoff note was produced — nothing saved.")
+        return
+    path = save_handoff(root, summary)
+    if path is None:
+        ui.warn(f"Could not write the handoff note under {HANDOFF_DIR} — nothing saved.")
+        return
+    if transcript:
+        transcript.log("handoff_saved", path=str(path), note=transcript.clipped(summary))
+    ui.info(f"Handoff note saved — the next session here starts with it: {path}")
 
 
 def _run_one_task(

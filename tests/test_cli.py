@@ -342,3 +342,71 @@ class TestHelpCommand:
         console = RecordingConsole()
         _handle_command("/teleport", messages=[], usage=SessionUsage(), model="m", ui=console)
         assert any("/help" in w for w in console.warnings)
+
+
+class HandoffConsole(CompactConsole):
+    """CompactConsole that also answers the exit confirmation."""
+
+    def __init__(self, answer: bool) -> None:
+        super().__init__()
+        self.answer = answer
+        self.confirmations: list[str] = []
+
+    def confirm(self, prompt: str) -> bool:
+        self.confirmations.append(prompt)
+        return self.answer
+
+
+class TestOfferHandoff:
+    def messages(self) -> list[dict[str, object]]:
+        return [
+            {"role": "user", "content": "task"},
+            {"role": "assistant", "content": "done"},
+        ]
+
+    def test_yes_saves_the_note(self, tmp_path, monkeypatch) -> None:
+        from acode import cli, handoff
+
+        store = tmp_path / "store"
+        monkeypatch.setattr(cli, "save_handoff", lambda root, note: handoff.save_handoff(root, note, store))
+        console = HandoffConsole(answer=True)
+        client = FakeModelClient([text_turn("was fixing the parser; next: run tests")])
+        cli._offer_handoff(
+            client, self.messages(), root=tmp_path, ui=console, model="m", transcript=None
+        )
+        assert console.confirmations  # the user was asked
+        loaded = handoff.load_handoff(tmp_path, store)
+        assert loaded is not None and "fixing the parser" in loaded[1]
+        assert any("saved" in m for m in console.infos)
+
+    def test_no_makes_no_request(self, tmp_path) -> None:
+        from acode import cli
+
+        console = HandoffConsole(answer=False)
+        client = FakeModelClient([])
+        cli._offer_handoff(
+            client, self.messages(), root=tmp_path, ui=console, model="m", transcript=None
+        )
+        assert client.requests == []
+
+    def test_empty_conversation_is_not_asked(self, tmp_path) -> None:
+        from acode import cli
+
+        console = HandoffConsole(answer=True)
+        cli._offer_handoff(
+            FakeModelClient([]), [], root=tmp_path, ui=console, model="m", transcript=None
+        )
+        assert console.confirmations == []
+
+    def test_no_summary_saves_nothing(self, tmp_path, monkeypatch) -> None:
+        from acode import cli, handoff
+
+        store = tmp_path / "store"
+        monkeypatch.setattr(cli, "save_handoff", lambda root, note: handoff.save_handoff(root, note, store))
+        console = HandoffConsole(answer=True)
+        client = FakeModelClient([FakeTurn(FakeResponse([], "end_turn"))])
+        cli._offer_handoff(
+            client, self.messages(), root=tmp_path, ui=console, model="m", transcript=None
+        )
+        assert handoff.load_handoff(tmp_path, store) is None
+        assert any("nothing saved" in w for w in console.warnings)

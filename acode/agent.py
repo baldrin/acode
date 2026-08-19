@@ -32,9 +32,9 @@ CONTEXT_WARNING_TOKENS = 800_000  # mid-task warning; compaction runs at the tas
 DECLINED_MESSAGE = "User declined this action."
 
 COMPACT_PROMPT = """\
-The conversation is approaching the context limit. Write a handoff summary
-that would let you continue this session in a fresh conversation with no
-other memory of it. Include: the user's task(s) and their current status;
+Write a handoff summary of this session that would let you continue the
+work in a fresh conversation with no other memory of it. Include: the
+user's task(s) and their current status;
 what was changed (files, commands run) and why; key discoveries, decisions,
 and constraints; approaches that failed and should not be retried; and what
 remains to be done, with concrete next steps. Reply with only the summary —
@@ -46,13 +46,15 @@ COMPACT_HEADER = (
 )
 
 
-def compact_conversation(client: ModelClient, messages: list[dict[str, Any]], *, ui: UI) -> bool:
-    """Replace the conversation with a model-written handoff summary.
+def summarize_conversation(
+    client: ModelClient, messages: list[dict[str, Any]], *, ui: UI
+) -> str | None:
+    """Ask the model for a handoff summary of the conversation.
 
     One extra model request; its usage is reported through the normal stats
     channel so session accounting stays truthful. The summary is not streamed
-    to the terminal — it exists for the model, not the user. Returns False
-    (leaving ``messages`` untouched) when the model produced no summary text.
+    to the terminal — it exists for the model, not the user. Returns None
+    when the response contained no summary text.
     """
     ui.on_turn_start()
     turn = client.create_turn(messages + [{"role": "user", "content": COMPACT_PROMPT}])
@@ -66,7 +68,17 @@ def compact_conversation(client: ModelClient, messages: list[dict[str, Any]], *,
     summary = "".join(
         block.text for block in response.content if getattr(block, "type", None) == "text"
     ).strip()
-    if not summary:
+    return summary or None
+
+
+def compact_conversation(client: ModelClient, messages: list[dict[str, Any]], *, ui: UI) -> bool:
+    """Replace the conversation with a model-written handoff summary.
+
+    Returns False (leaving ``messages`` untouched) when no summary was
+    produced.
+    """
+    summary = summarize_conversation(client, messages, ui=ui)
+    if summary is None:
         return False
     # A user/assistant pair keeps roles alternating for the next task's
     # user message, whatever the endpoint's strictness about ordering.
@@ -82,9 +94,56 @@ def compact_conversation(client: ModelClient, messages: list[dict[str, Any]], *,
     return True
 
 
-def build_system_prompt(root: Path) -> str:
+INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md")  # first match wins
+INSTRUCTIONS_MAX_CHARS = 40_000
+
+
+def load_project_instructions(root: Path) -> tuple[str, str] | None:
+    """(filename, contents) of the workspace's agent instructions file.
+
+    AGENTS.md is the cross-tool convention; CLAUDE.md is read as a fallback
+    since many repositories only carry that.
+    """
+    for name in INSTRUCTION_FILES:
+        path = root / name
+        try:
+            if path.is_file():
+                return name, path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+    return None
+
+
+def build_system_prompt(
+    root: Path,
+    *,
+    instructions: tuple[str, str] | None = None,  # (filename, contents)
+    handoff: tuple[str, str] | None = None,  # (date, note)
+) -> str:
     # Static per session — nothing volatile may be interpolated here, or the
-    # prompt-cache prefix breaks on every request.
+    # prompt-cache prefix breaks on every request. (The handoff date is fixed
+    # at session start, so it is static in that sense.)
+    prompt = _base_system_prompt(root)
+    if instructions:
+        name, text = instructions
+        if len(text) > INSTRUCTIONS_MAX_CHARS:
+            text = text[:INSTRUCTIONS_MAX_CHARS] + "\n[instructions truncated]"
+        prompt += (
+            f"\n\nProject instructions from {name}, maintained by this "
+            f"repository's owners — follow them:\n\n{text}"
+        )
+    if handoff:
+        date, note = handoff
+        prompt += (
+            f"\n\nYour handoff note from the previous acode session in this "
+            f"repository, written {date}. The repository may have changed "
+            f"since — verify against its current state before relying on "
+            f"details:\n\n{note}"
+        )
+    return prompt
+
+
+def _base_system_prompt(root: Path) -> str:
     return f"""\
 You are acode, a coding agent working inside the repository at {root}.
 

@@ -106,6 +106,30 @@ Flags:
   limit, and compacts it automatically at the next task boundary — see
   Context management.
 
+## Memory
+
+Two lightweight forms of persistence across sessions — durable facts and
+"where was I":
+
+**Project instructions.** If the workspace root contains an `AGENTS.md`
+(the [cross-tool convention](https://agents.md) for agent instructions), it
+is loaded into the system prompt every session; `CLAUDE.md` is the fallback
+for repositories that only carry that. Put durable knowledge there: build
+and test commands, conventions, boundaries, things the model should never
+have to rediscover. The banner names the file that was loaded; files past
+40k characters are truncated.
+
+**Handoff notes.** Exiting with `/quit` while a conversation exists offers
+to save a handoff note — one extra model request producing the same summary
+compaction uses: what was done, decisions made, what remains. The note lands
+in `~/.acode/handoff/<workspace-path>.md` (one per workspace, overwritten by
+each save) and is loaded into the system prompt of the next session in that
+workspace; the banner shows the note's date and path. The model is told the
+repository may have changed since and to verify before relying on details.
+Delete the file to forget. Two notes: `Ctrl+D` exits without asking (there
+is no stdin left to answer with — use `/quit` to be offered), and a note is
+plain Markdown — edit it by hand if the model's summary missed something.
+
 ## Context management
 
 Long sessions no longer die at the context limit. The conversation's size is
@@ -239,5 +263,6 @@ installed) and are skipped elsewhere. Layout:
 | `acode/tools.py` | the seven tools: schemas, implementations, previews |
 | `acode/safety.py` | path confinement, command denylist, command execution |
 | `acode/sandbox.py` | the OS sandbox: Seatbelt/bubblewrap wrapping, writable roots, startup probes |
+| `acode/handoff.py` | handoff notes: per-workspace save/load of the exit summary |
 | `acode/display.py` | terminal rendering and the approval prompt |
 | `acode/cli.py` | argument parsing, the REPL, API error handling |

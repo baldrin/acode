@@ -88,6 +88,16 @@ class ConsoleUI:
         self._fresh_line()
         print(self._paint(message, DIM))
 
+    def confirm(self, prompt: str) -> bool:
+        """A one-line y/N question outside the approval gate (default: no)."""
+        self._fresh_line()
+        try:
+            reply = input(self._paint(f"{prompt} [y/N] ", BOLD))
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return False
+        return reply.strip().lower() in {"y", "yes"}
+
     def on_auto_approved(self, name: str, preview: str) -> None:
         """--trust-edits: show what is happening without stopping for a yes."""
         self._fresh_line()

@@ -8,7 +8,15 @@ from typing import Any, Iterator
 
 import pytest
 
-from acode.agent import DECLINED_MESSAGE, TurnStats, compact_conversation, run_task
+from acode.agent import (
+    DECLINED_MESSAGE,
+    INSTRUCTIONS_MAX_CHARS,
+    TurnStats,
+    build_system_prompt,
+    compact_conversation,
+    load_project_instructions,
+    run_task,
+)
 from acode.safety import SNAPSHOT_REF
 from tests.conftest import MAIN_PY, git
 
@@ -504,3 +512,55 @@ class TestCompaction:
         client = FakeModelClient([FakeTurn(FakeResponse([], "end_turn"))])
         compact_conversation(client, self.history(), ui=RecordingUI())
         assert client.created_turns[0].closed
+
+
+class TestProjectInstructions:
+    def test_agents_md_wins_over_claude_md(self, workspace: Path) -> None:
+        (workspace / "AGENTS.md").write_text("agents rules")
+        (workspace / "CLAUDE.md").write_text("claude rules")
+        assert load_project_instructions(workspace) == ("AGENTS.md", "agents rules")
+
+    def test_claude_md_is_the_fallback(self, workspace: Path) -> None:
+        (workspace / "CLAUDE.md").write_text("claude rules")
+        assert load_project_instructions(workspace) == ("CLAUDE.md", "claude rules")
+
+    def test_no_file_means_none(self, workspace: Path) -> None:
+        assert load_project_instructions(workspace) is None
+
+
+class TestBuildSystemPrompt:
+    def test_bare_prompt_names_the_workspace(self, workspace: Path) -> None:
+        prompt = build_system_prompt(workspace)
+        assert str(workspace) in prompt
+        assert "Project instructions" not in prompt
+        assert "handoff note" not in prompt
+
+    def test_instructions_are_included_with_their_filename(self, workspace: Path) -> None:
+        prompt = build_system_prompt(
+            workspace, instructions=("AGENTS.md", "run tests with pytest -q")
+        )
+        assert "AGENTS.md" in prompt
+        assert "run tests with pytest -q" in prompt
+
+    def test_oversized_instructions_are_truncated(self, workspace: Path) -> None:
+        huge = "x" * (INSTRUCTIONS_MAX_CHARS + 500)
+        prompt = build_system_prompt(workspace, instructions=("AGENTS.md", huge))
+        assert "[instructions truncated]" in prompt
+        assert len(prompt) < len(huge) + 1_000
+
+    def test_handoff_note_is_included_with_its_date(self, workspace: Path) -> None:
+        prompt = build_system_prompt(
+            workspace, handoff=("2026-08-18", "was adding the parser; tests failing")
+        )
+        assert "2026-08-18" in prompt
+        assert "was adding the parser" in prompt
+        assert "may have changed" in prompt  # the staleness caveat
+
+    def test_both_sections_together(self, workspace: Path) -> None:
+        prompt = build_system_prompt(
+            workspace,
+            instructions=("CLAUDE.md", "use uv"),
+            handoff=("2026-08-18", "finish the docs"),
+        )
+        assert "use uv" in prompt
+        assert "finish the docs" in prompt
