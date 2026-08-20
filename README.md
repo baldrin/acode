@@ -62,6 +62,10 @@ The initial task is optional; without it you are prompted. After each task
 completes, you can give a follow-up in the same conversation. `Ctrl+C`
 interrupts the current turn; `Ctrl+D` or `/quit` exits.
 
+The prompt has line editing and history (stdlib readline): up-arrow recalls
+earlier tasks, persisted across sessions in `~/.acode/history` (last 1,000
+entries). Answers to y/N prompts are kept out of the recall history.
+
 Commands at the prompt:
 
 | Command | Effect |

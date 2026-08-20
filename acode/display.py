@@ -8,9 +8,59 @@ approver) and ``error`` (used by the CLI).
 from __future__ import annotations
 
 import sys
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 from .agent import TurnStats
+
+HISTORY_FILE = Path.home() / ".acode" / "history"
+HISTORY_LENGTH = 1_000
+
+
+def setup_input_history(path: Path = HISTORY_FILE) -> Callable[[], None] | None:
+    """Line editing and persistent history for input(), via stdlib readline.
+
+    Loads previous sessions' task history and returns a saver for the CLI to
+    call at exit. Returns None where readline is unavailable (e.g. Windows)
+    — everything still works, just without editing or recall.
+    """
+    try:
+        import readline
+    except ImportError:
+        return None
+    readline.set_history_length(HISTORY_LENGTH)
+    try:
+        readline.read_history_file(path)
+    except OSError:
+        pass
+
+    def save() -> None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            readline.write_history_file(path)
+        except OSError:
+            pass  # history is a convenience; never block exit on it
+
+    return save
+
+
+def _history_length() -> int:
+    try:
+        import readline
+    except ImportError:
+        return 0
+    return readline.get_current_history_length()
+
+
+def _truncate_history(length: int) -> None:
+    """Drop history entries added past ``length`` — keeps y/N answers at
+    approval and confirmation prompts out of the task recall history."""
+    try:
+        import readline
+    except ImportError:
+        return
+    while readline.get_current_history_length() > length:
+        readline.remove_history_item(readline.get_current_history_length() - 1)
 
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
@@ -92,11 +142,10 @@ class ConsoleUI:
         """A one-line y/N question outside the approval gate (default: no)."""
         self._fresh_line()
         try:
-            reply = input(self._paint(f"{prompt} [y/N] ", BOLD))
-        except (EOFError, KeyboardInterrupt):
+            return self._ask_yes_no(f"{prompt} [y/N] ")
+        except KeyboardInterrupt:
             print()
             return False
-        return reply.strip().lower() in {"y", "yes"}
 
     def on_auto_approved(self, name: str, preview: str) -> None:
         """--trust-edits: show what is happening without stopping for a yes."""
@@ -110,11 +159,21 @@ class ConsoleUI:
         print()
         print(self._paint(f"⏸ approval required — {name}", BOLD, YELLOW))
         print(self._colorize_preview(preview))
+        return self._ask_yes_no("  proceed? [y/N] ")
+
+    def _ask_yes_no(self, prompt: str) -> bool:
+        # The prompt is passed to input() unpainted: with readline active,
+        # ANSI escapes in the prompt break its cursor arithmetic. The answer
+        # is removed from history so recall stays tasks-only. Ctrl+C
+        # propagates — at the approval gate it means "discard this turn".
+        before = _history_length()
         try:
-            reply = input(self._paint("  proceed? [y/N] ", BOLD))
+            reply = input(prompt)
         except EOFError:
             print()
             return False
+        finally:
+            _truncate_history(before)
         return reply.strip().lower() in {"y", "yes"}
 
     # -- internals ---------------------------------------------------------

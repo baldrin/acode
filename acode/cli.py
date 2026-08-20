@@ -25,7 +25,7 @@ from .agent import (
     run_task,
     summarize_conversation,
 )
-from .display import ConsoleUI
+from .display import ConsoleUI, setup_input_history
 from .handoff import HANDOFF_DIR, handoff_path, load_handoff, save_handoff
 from .resume import ResumedSession, ResumeError, resolve_resume, resume_note_messages
 from .sandbox import Sandbox, SandboxUnavailable, detect_sandbox
@@ -226,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     usage = SessionUsage()
     transcript = Transcript.open(root, LOG_DIR, full=args.log_full)
     ui = TrackingUI(usage, transcript)
+    save_history = setup_input_history()
 
     try:
         try:
@@ -382,6 +383,8 @@ def main(argv: list[str] | None = None) -> int:
         ui.info(usage.summary(model))
         return 0
     finally:
+        if save_history:
+            save_history()
         if transcript:
             transcript.log(
                 "session_end",
