@@ -101,6 +101,20 @@
     border-bottom: 6px solid var(--amber);
   }
 
+  .hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+    align-items: center;
+  }
+
+  .hero-art { display: none; }
+
+  @media (min-width: 56rem) {
+    .hero-grid { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+    .hero-art { display: block; width: 100%; height: auto; }
+  }
+
   .hero h1 {
     font-size: clamp(2.6rem, 7vw, 4.5rem);
     font-weight: 700;
@@ -188,6 +202,15 @@
     padding: 1.75rem 1.75rem 2rem;
   }
 
+  .card-art {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #eef1ea;
+    border-radius: 3px;
+    margin-bottom: 1.25rem;
+  }
+
   .service-card h3 {
     font-size: 1.6rem;
     font-weight: 700;
@@ -241,6 +264,21 @@
     font-weight: 700;
     margin-bottom: 0.35rem;
   }
+
+  .step-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.25rem;
+    height: 3.25rem;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    color: var(--pine);
+    margin-bottom: 0.9rem;
+  }
+
+  .step-icon svg { width: 1.9rem; height: 1.9rem; }
 
   .step .step-num {
     font-family: var(--display);
@@ -339,14 +377,52 @@
 </header>
 
 <div class="hero" id="top">
-  <div class="wrap">
-    <p class="kicker">Junk Removal &amp; Tree Service &middot; Oconee &amp; Athens-Clarke County</p>
-    <h1>Your junk disappears. Your space comes back.</h1>
-    <p class="lede">Furniture, appliances, yard debris, fallen trees &mdash; we load it, haul it, and clean up afterward. Fair, upfront pricing and free estimates, with same-day or next-day pickup often available.</p>
-    <div class="cta-row">
-      <a class="call-btn" href="tel:+18703071411">Call or Text (870) 307-1411</a>
-      <span class="cta-note">Free estimate &mdash; no obligation</span>
+  <div class="wrap hero-grid">
+    <div>
+      <p class="kicker">Junk Removal &amp; Tree Service &middot; Oconee &amp; Athens-Clarke County</p>
+      <h1>Your junk disappears. Your space comes back.</h1>
+      <p class="lede">Furniture, appliances, yard debris, fallen trees &mdash; we load it, haul it, and clean up afterward. Fair, upfront pricing and free estimates, with same-day or next-day pickup often available.</p>
+      <div class="cta-row">
+        <a class="call-btn" href="tel:+18703071411">Call or Text (870) 307-1411</a>
+        <span class="cta-note">Free estimate &mdash; no obligation</span>
+      </div>
     </div>
+    <svg class="hero-art" viewBox="0 0 360 230" role="img" aria-label="Illustration of a hauling truck loaded with junk">
+      <!-- ground -->
+      <line x1="16" y1="200" x2="344" y2="200" stroke="#c9d4c5" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+      <!-- junk in the bed -->
+      <rect x="140" y="78" width="92" height="28" rx="9" fill="#e4e9e0"/>
+      <circle cx="163" cy="92" r="3" fill="#5c6b58"/>
+      <circle cx="186" cy="92" r="3" fill="#5c6b58"/>
+      <circle cx="209" cy="92" r="3" fill="#5c6b58"/>
+      <rect x="240" y="62" width="46" height="44" rx="3" fill="#d9741a"/>
+      <rect x="259" y="62" width="8" height="44" fill="#b95f0f"/>
+      <circle cx="311" cy="88" r="17" fill="#16281e" stroke="#c9d4c5" stroke-width="4"/>
+      <circle cx="311" cy="88" r="5" fill="#c9d4c5"/>
+      <!-- truck bed -->
+      <rect x="130" y="102" width="200" height="76" rx="4" fill="#35553f" stroke="#c9d4c5" stroke-width="3"/>
+      <line x1="162" y1="108" x2="162" y2="172" stroke="#c9d4c5" stroke-width="2" opacity="0.4"/>
+      <line x1="198" y1="108" x2="198" y2="172" stroke="#c9d4c5" stroke-width="2" opacity="0.4"/>
+      <line x1="234" y1="108" x2="234" y2="172" stroke="#c9d4c5" stroke-width="2" opacity="0.4"/>
+      <line x1="270" y1="108" x2="270" y2="172" stroke="#c9d4c5" stroke-width="2" opacity="0.4"/>
+      <line x1="306" y1="108" x2="306" y2="172" stroke="#c9d4c5" stroke-width="2" opacity="0.4"/>
+      <!-- cab -->
+      <rect x="62" y="100" width="66" height="46" rx="7" fill="#d9741a"/>
+      <rect x="46" y="126" width="84" height="52" rx="7" fill="#d9741a"/>
+      <rect x="72" y="108" width="38" height="28" rx="4" fill="#f7f8f5" opacity="0.92"/>
+      <rect x="38" y="160" width="14" height="16" rx="3" fill="#c9d4c5"/>
+      <circle cx="52" cy="152" r="5" fill="#f7f8f5"/>
+      <!-- wheels -->
+      <circle cx="96" cy="184" r="19" fill="#16281e" stroke="#c9d4c5" stroke-width="4"/>
+      <circle cx="96" cy="184" r="6" fill="#c9d4c5"/>
+      <circle cx="236" cy="184" r="19" fill="#16281e" stroke="#c9d4c5" stroke-width="4"/>
+      <circle cx="236" cy="184" r="6" fill="#c9d4c5"/>
+      <circle cx="288" cy="184" r="19" fill="#16281e" stroke="#c9d4c5" stroke-width="4"/>
+      <circle cx="288" cy="184" r="6" fill="#c9d4c5"/>
+      <!-- motion lines -->
+      <line x1="330" y1="120" x2="352" y2="120" stroke="#c9d4c5" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+      <line x1="338" y1="140" x2="356" y2="140" stroke="#c9d4c5" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+    </svg>
   </div>
 </div>
 
@@ -358,6 +434,23 @@
     </div>
     <div class="services">
       <div class="service-card">
+        <svg class="card-art" viewBox="0 0 300 150" role="img" aria-label="Illustration of an armchair, moving boxes, and a lamp waiting for pickup">
+          <line x1="14" y1="132" x2="286" y2="132" stroke="#c9d4c5" stroke-width="3" stroke-linecap="round"/>
+          <!-- armchair -->
+          <rect x="30" y="56" width="22" height="62" rx="9" fill="#5c6b58"/>
+          <rect x="100" y="76" width="22" height="42" rx="9" fill="#5c6b58"/>
+          <rect x="34" y="94" width="84" height="38" rx="7" fill="#5c6b58"/>
+          <rect x="52" y="84" width="48" height="18" rx="7" fill="#7d8c77"/>
+          <!-- boxes -->
+          <rect x="150" y="76" width="56" height="56" rx="3" fill="#d9741a"/>
+          <rect x="174" y="76" width="8" height="56" fill="#b95f0f"/>
+          <rect x="160" y="34" width="42" height="42" rx="3" fill="#e39a55"/>
+          <rect x="178" y="34" width="6" height="42" fill="#d9741a"/>
+          <!-- lamp -->
+          <rect x="252" y="58" width="6" height="66" rx="3" fill="#20392b"/>
+          <polygon points="236,58 274,58 282,32 228,32" fill="#20392b"/>
+          <rect x="238" y="122" width="34" height="10" rx="5" fill="#20392b"/>
+        </svg>
         <h3>Junk Removal</h3>
         <p class="sub">Clear the clutter without lifting a finger.</p>
         <ul>
@@ -370,6 +463,22 @@
         </ul>
       </div>
       <div class="service-card">
+        <svg class="card-art" viewBox="0 0 300 150" role="img" aria-label="Illustration of a tree beside a stack of cut logs">
+          <line x1="14" y1="132" x2="286" y2="132" stroke="#c9d4c5" stroke-width="3" stroke-linecap="round"/>
+          <!-- tree -->
+          <rect x="96" y="76" width="16" height="56" rx="3" fill="#6e5136"/>
+          <rect x="104" y="88" width="30" height="10" rx="5" fill="#6e5136" transform="rotate(-28 104 93)"/>
+          <circle cx="76" cy="66" r="27" fill="#2e6b46"/>
+          <circle cx="106" cy="42" r="32" fill="#20392b"/>
+          <circle cx="136" cy="68" r="26" fill="#3d7d54"/>
+          <!-- cut logs -->
+          <circle cx="216" cy="118" r="15" fill="#8a6844" stroke="#6e5136" stroke-width="3"/>
+          <circle cx="216" cy="118" r="6" fill="#a5825e"/>
+          <circle cx="248" cy="118" r="15" fill="#8a6844" stroke="#6e5136" stroke-width="3"/>
+          <circle cx="248" cy="118" r="6" fill="#a5825e"/>
+          <circle cx="232" cy="92" r="15" fill="#8a6844" stroke="#6e5136" stroke-width="3"/>
+          <circle cx="232" cy="92" r="6" fill="#a5825e"/>
+        </svg>
         <h3>Tree Service</h3>
         <p class="sub">We'll cut it, clean it up, and haul it away.</p>
         <ul>
@@ -391,16 +500,38 @@
     </div>
     <div class="steps">
       <div class="step">
+        <span class="step-icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="10" y="3" width="12" height="26" rx="3"/>
+            <line x1="14" y1="25" x2="18" y2="25"/>
+          </svg>
+        </span>
         <span class="step-num">Step 1</span>
         <h3>Get a free estimate</h3>
         <p>Call or text with what you need gone. You'll get a fair, upfront price &mdash; no surprises when the job is done.</p>
       </div>
       <div class="step">
+        <span class="step-icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="12" width="16" height="11" rx="2"/>
+            <path d="M19 15h6l4 5v3h-10"/>
+            <circle cx="9" cy="26" r="2.5"/>
+            <circle cx="24" cy="26" r="2.5"/>
+          </svg>
+        </span>
         <span class="step-num">Step 2</span>
         <h3>We load &amp; haul</h3>
         <p>Our crew does all the lifting, cutting, and loading. Same-day or next-day pickup is often available.</p>
       </div>
       <div class="step">
+        <span class="step-icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="4" x2="15" y2="17"/>
+            <path d="M15 17l-7 3 3 8 8-4-4-7z"/>
+            <line x1="26" y1="14" x2="29" y2="14"/>
+            <line x1="25" y1="20" x2="28" y2="22"/>
+          </svg>
+        </span>
         <span class="step-num">Step 3</span>
         <h3>We clean up</h3>
         <p>We sweep up after ourselves and leave the space ready to use. Your only job is deciding what to do with it.</p>
