@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Never There Junk Removal &amp; Tree Service</title>
+<meta name="description" content="Junk removal, hauling, and tree service in Oconee and Athens-Clarke County. Free estimates, fair upfront pricing, same-day or next-day pickup often available. Call or text (870) 307-1411.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
+<style>
+  :root {
+    --pine: #20392b;
+    --pine-deep: #16281e;
+    --paper: #f7f8f5;
+    --card: #ffffff;
+    --ink: #22281f;
+    --sage: #5c6b58;
+    --line: #dde2d9;
+    --amber: #d9741a;
+    --amber-deep: #b95f0f;
+    --display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+    --body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 1.0625rem;
+    line-height: 1.6;
+  }
+
+  a { color: inherit; }
+
+  .wrap {
+    max-width: 68rem;
+    margin: 0 auto;
+    padding: 0 1.25rem;
+  }
+
+  h1, h2, h3 {
+    font-family: var(--display);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    line-height: 1.05;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  /* ---- Header ---- */
+  header {
+    background: var(--pine);
+    color: var(--paper);
+  }
+
+  .header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem 0;
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 1.35rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+  }
+
+  .header-phone {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 1.2rem;
+    letter-spacing: 0.03em;
+    text-decoration: none;
+    color: var(--paper);
+    border: 2px solid rgba(247, 248, 245, 0.45);
+    border-radius: 3px;
+    padding: 0.3rem 0.85rem;
+    white-space: nowrap;
+  }
+
+  .header-phone:hover,
+  .header-phone:focus-visible {
+    border-color: var(--paper);
+  }
+
+  /* ---- Hero ---- */
+  .hero {
+    background: var(--pine);
+    color: var(--paper);
+    padding: 3.5rem 0 4rem;
+    border-bottom: 6px solid var(--amber);
+  }
+
+  .hero h1 {
+    font-size: clamp(2.6rem, 7vw, 4.5rem);
+    font-weight: 700;
+    max-width: 18ch;
+  }
+
+  .hero .kicker {
+    font-family: var(--display);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.95rem;
+    color: #c9d4c5;
+    margin: 0 0 1rem;
+  }
+
+  .hero p.lede {
+    max-width: 46ch;
+    font-size: 1.15rem;
+    color: #e4e9e0;
+    margin: 1.25rem 0 2rem;
+  }
+
+  .cta-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .call-btn {
+    display: inline-block;
+    background: var(--amber);
+    color: #ffffff;
+    font-family: var(--display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 1.35rem;
+    text-decoration: none;
+    padding: 0.7rem 1.6rem;
+    border-radius: 3px;
+  }
+
+  .call-btn:hover,
+  .call-btn:focus-visible {
+    background: var(--amber-deep);
+  }
+
+  .cta-note {
+    color: #c9d4c5;
+    font-size: 0.95rem;
+    max-width: 24ch;
+  }
+
+  /* ---- Sections ---- */
+  section { padding: 3.5rem 0; }
+
+  .section-head {
+    margin-bottom: 2rem;
+  }
+
+  .section-head h2 {
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    font-weight: 700;
+  }
+
+  .section-head p {
+    color: var(--sage);
+    max-width: 60ch;
+    margin: 0.6rem 0 0;
+  }
+
+  .services {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+    gap: 1.5rem;
+  }
+
+  .service-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--pine);
+    border-radius: 4px;
+    padding: 1.75rem 1.75rem 2rem;
+  }
+
+  .service-card h3 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+  }
+
+  .service-card .sub {
+    color: var(--sage);
+    margin: 0 0 1.1rem;
+  }
+
+  .service-card ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .service-card li {
+    padding-left: 1.4rem;
+    position: relative;
+  }
+
+  .service-card li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.52em;
+    width: 0.55rem;
+    height: 0.55rem;
+    background: var(--amber);
+    border-radius: 1px;
+  }
+
+  /* ---- How it works ---- */
+  .how {
+    background: #eef1ea;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 1.5rem;
+  }
+
+  .step h3 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+  }
+
+  .step .step-num {
+    font-family: var(--display);
+    font-weight: 700;
+    color: var(--amber);
+    display: block;
+    font-size: 1rem;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.5rem;
+  }
+
+  .step p {
+    margin: 0;
+    color: var(--sage);
+  }
+
+  /* ---- Area + closing CTA ---- */
+  .closing {
+    text-align: center;
+    padding: 4rem 0;
+  }
+
+  .closing h2 {
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 700;
+  }
+
+  .closing p {
+    color: var(--sage);
+    max-width: 50ch;
+    margin: 0.9rem auto 1.8rem;
+  }
+
+  .closing .call-btn { font-size: 1.5rem; }
+
+  .area-line {
+    margin-top: 1.4rem;
+    font-family: var(--display);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.95rem;
+    color: var(--pine);
+  }
+
+  /* ---- Footer ---- */
+  footer {
+    background: var(--pine-deep);
+    color: #b9c4b5;
+    padding: 2.25rem 0;
+    font-size: 0.95rem;
+  }
+
+  footer .foot-brand {
+    font-family: var(--display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 1.15rem;
+    color: var(--paper);
+    margin: 0 0 0.35rem;
+  }
+
+  footer p { margin: 0.35rem 0; max-width: 62ch; }
+
+  footer a {
+    color: var(--paper);
+    text-decoration-color: rgba(247, 248, 245, 0.4);
+  }
+
+  .disclaimer {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid rgba(247, 248, 245, 0.15);
+    font-size: 0.875rem;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--amber);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 40rem) {
+    .hero { padding: 2.5rem 0 3rem; }
+    section { padding: 2.5rem 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap header-bar">
+    <a class="brand" href="#top">Never There</a>
+    <a class="header-phone" href="tel:+18703071411">(870) 307-1411</a>
+  </div>
+</header>
+
+<div class="hero" id="top">
+  <div class="wrap">
+    <p class="kicker">Junk Removal &amp; Tree Service &middot; Oconee &amp; Athens-Clarke County</p>
+    <h1>Your junk disappears. Your space comes back.</h1>
+    <p class="lede">Furniture, appliances, yard debris, fallen trees &mdash; we load it, haul it, and clean up afterward. Fair, upfront pricing and free estimates, with same-day or next-day pickup often available.</p>
+    <div class="cta-row">
+      <a class="call-btn" href="tel:+18703071411">Call or Text (870) 307-1411</a>
+      <span class="cta-note">Free estimate &mdash; no obligation</span>
+    </div>
+  </div>
+</div>
+
+<section aria-labelledby="services-heading">
+  <div class="wrap">
+    <div class="section-head">
+      <h2 id="services-heading">What we haul</h2>
+      <p>Two crews, one call. Whether it's a cluttered garage or a downed oak, we handle the heavy lifting from start to finish.</p>
+    </div>
+    <div class="services">
+      <div class="service-card">
+        <h3>Junk Removal</h3>
+        <p class="sub">Clear the clutter without lifting a finger.</p>
+        <ul>
+          <li>Furniture &amp; mattresses</li>
+          <li>Appliances</li>
+          <li>Yard debris</li>
+          <li>Construction clean-up</li>
+          <li>Garage, attic &amp; estate cleanouts</li>
+          <li>And almost anything else</li>
+        </ul>
+      </div>
+      <div class="service-card">
+        <h3>Tree Service</h3>
+        <p class="sub">We'll cut it, clean it up, and haul it away.</p>
+        <ul>
+          <li>Tree &amp; limb removal</li>
+          <li>Fallen-tree removal</li>
+          <li>Storm cleanup</li>
+          <li>Brush &amp; yard-debris hauling</li>
+          <li>Lot &amp; property cleanup</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="how" aria-labelledby="how-heading">
+  <div class="wrap">
+    <div class="section-head">
+      <h2 id="how-heading">How it works</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="step-num">Step 1</span>
+        <h3>Get a free estimate</h3>
+        <p>Call or text with what you need gone. You'll get a fair, upfront price &mdash; no surprises when the job is done.</p>
+      </div>
+      <div class="step">
+        <span class="step-num">Step 2</span>
+        <h3>We load &amp; haul</h3>
+        <p>Our crew does all the lifting, cutting, and loading. Same-day or next-day pickup is often available.</p>
+      </div>
+      <div class="step">
+        <span class="step-num">Step 3</span>
+        <h3>We clean up</h3>
+        <p>We sweep up after ourselves and leave the space ready to use. Your only job is deciding what to do with it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="closing" aria-labelledby="cta-heading">
+  <div class="wrap">
+    <h2 id="cta-heading">Ready to reclaim your space?</h2>
+    <p>Fast, friendly, and dependable service. No job is too big or too small.</p>
+    <a class="call-btn" href="tel:+18703071411">Call or Text (870) 307-1411</a>
+    <p class="area-line">Serving Oconee &amp; Athens-Clarke County</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p class="foot-brand">Never There Junk Removal &amp; Tree Service</p>
+    <p>Fast service &middot; Fair pricing &middot; Clean results</p>
+    <p>Call or text <a href="tel:+18703071411">(870) 307-1411</a> for a free estimate.</p>
+    <p class="disclaimer">Some restricted or hazardous materials may not be accepted.</p>
+  </div>
+</footer>
+
+</body>
+</html>
